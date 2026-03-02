@@ -1,7 +1,99 @@
 import json
+from dataclasses import dataclass
+from enum import Enum
 from typing import NamedTuple
 
 import pandas as pd
+
+
+class DataType(Enum):
+    """Enumeration of supported DHIS2 data types for extraction."""
+
+    DATA_ELEMENT = "DATA_ELEMENT"
+    REPORTING_RATE = "REPORTING_RATE"
+    INDICATOR = "INDICATOR"
+
+
+@dataclass
+class DataPointModel:
+    """Data model representing a DHIS2 data point.
+
+    Attributes
+    ----------
+    dataElement : str
+        The unique identifier for the data element.
+    period : str
+        The reporting period for the data point.
+    orgUnit : str
+        The organizational unit associated with the data point.
+    categoryOptionCombo : str
+        The category option combination identifier.
+    attributeOptionCombo : str
+        The attribute option combination identifier.
+    value : float
+        The value of the data point.
+    """
+
+    dataElement: str  # noqa: N815
+    period: str
+    orgUnit: str  # noqa: N815
+    categoryOptionCombo: str  # noqa: N815
+    attributeOptionCombo: str  # noqa: N815
+    value: float
+
+    def to_json(self) -> dict:
+        """Return a dictionary representation of the data point suitable for DHIS2 JSON format.
+
+        Returns
+        -------
+        dict
+            A dictionary with keys corresponding to DHIS2 data value fields.
+        """
+        if self.value is None:
+            return {
+                "dataElement": self.dataElement,
+                "period": self.period,
+                "orgUnit": self.orgUnit,
+                "categoryOptionCombo": self.categoryOptionCombo,
+                "attributeOptionCombo": self.attributeOptionCombo,
+                "value": "",
+                "comment": "deleted value",
+            }
+
+        return {
+            "dataElement": self.dataElement,
+            "period": self.period,
+            "orgUnit": self.orgUnit,
+            "categoryOptionCombo": self.categoryOptionCombo,
+            "attributeOptionCombo": self.attributeOptionCombo,
+            "value": self.value,
+        }
+
+    def __str__(self) -> str:
+        return (
+            f"DataPointModel("
+            f"dataElement={self.dataElement}, "
+            f"period={self.period}, "
+            f"orgUnit={self.orgUnit}, "
+            f"categoryOptionCombo={self.categoryOptionCombo}, "
+            f"attributeOptionCombo={self.attributeOptionCombo}, "
+            f"value={self.value})"
+        )
+
+
+@dataclass
+class OrgUnitModel:
+    """Helper object definition to represent an organizational unit."""
+
+    id: str
+    name: str
+    shortName: str  # noqa: N815
+    openingDate: str  # noqa: N815
+    closedDate: str  # noqa: N815
+    parent: dict
+    level: int
+    path: str
+    geometry: str
 
 
 class OrgUnitRow(NamedTuple):

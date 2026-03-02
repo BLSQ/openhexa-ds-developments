@@ -6,7 +6,7 @@ import requests
 from openhexa.sdk import current_run
 from openhexa.toolbox.dhis2 import DHIS2
 
-from .data_point import DataPoint
+from .data_models import DataPoint
 
 
 class DHIS2Pusher:

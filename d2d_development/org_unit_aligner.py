@@ -9,7 +9,7 @@ from packaging import version
 from requests import Response
 from requests.structures import CaseInsensitiveDict
 
-from .org_unit_point import OrgUnitObj
+from .data_models import OrgUnitObj
 
 
 class OrgUnitCreateError(RuntimeError):
