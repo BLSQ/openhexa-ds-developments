@@ -147,14 +147,12 @@ class IndicatorsExtractor:
                 indicators=indicators,
                 periods=[period],
                 org_units=org_units,
-                include_cocs=include_cocs,
+                include_cocs=False,  # avoid client error
             )
         except Exception as e:
             raise Exception(f"Error retrieving indicators data: {e}") from e
 
-        raw_data_formatted = pl.DataFrame(response).rename(
-            columns={"pe": "period", "ou": "orgUnit", "co": "categoryOptionCombo"}
-        )
+        raw_data_formatted = pl.DataFrame(response).rename({"pe": "period", "ou": "orgUnit"})
         return self.extractor._map_to_dhis2_format(
             raw_data_formatted, data_type=DataType.INDICATOR, map_cocs=include_cocs
         )
@@ -219,18 +217,18 @@ class ReportingRatesExtractor:
     def _retrieve_data(self, reporting_rates: list[str], org_units: list[str], period: str, **kwargs) -> pl.DataFrame:  # noqa: ANN003
         if not self.extractor._valid_dhis2_period_format(period):
             raise ValueError(f"Invalid DHIS2 period format: {period}")
-        include_cocs = kwargs.get("include_cocs", False)
+
         try:
             response = self.extractor.dhis2_client.analytics.get(
                 data_elements=reporting_rates,
                 periods=[period],
                 org_units=org_units,
-                include_cocs=include_cocs,
+                include_cocs=False,  # avoid client error
             )
         except Exception as e:
             raise Exception(f"Error retrieving reporting rates data: {e}") from e
 
-        raw_data_formatted = pl.DataFrame(response).rename(columns={"pe": "period", "ou": "orgUnit"})
+        raw_data_formatted = pl.DataFrame(response).rename({"pe": "period", "ou": "orgUnit"})
         return self.extractor._map_to_dhis2_format(raw_data_formatted, data_type=DataType.REPORTING_RATE)
 
 
@@ -371,7 +369,7 @@ class DHIS2Extractor:
                 "orgUnit": dhis_data["orgUnit"] if "orgUnit" in dhis_data.columns else None,
                 "categoryOptionCombo": None,
                 "attributeOptionCombo": None,
-                "rateType": None,
+                "rateMetric": None,
                 "domainType": [domain_type] * n,
                 "value": dhis_data["value"] if "value" in dhis_data.columns else None,
             }
@@ -387,7 +385,7 @@ class DHIS2Extractor:
                 if "dx" in dhis_data.columns:
                     split = dhis_data["dx"].str.split_exact(".", 1)
                     data["dx"] = split.struct.field("field_0")
-                    data["rateType"] = split.struct.field("field_1")
+                    data["rateMetric"] = split.struct.field("field_1")
             elif data_type == DataType.INDICATOR:
                 data["dx"] = dhis_data["dx"] if "dx" in dhis_data.columns else None
                 if map_cocs and "categoryOptionCombo" in dhis_data.columns:

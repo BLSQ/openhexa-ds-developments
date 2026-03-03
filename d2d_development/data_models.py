@@ -39,7 +39,7 @@ class DataPointModel:
     orgUnit: str  # noqa: N815
     categoryOptionCombo: str  # noqa: N815
     attributeOptionCombo: str  # noqa: N815
-    value: float
+    value: str
 
     def to_json(self) -> dict:
         """Return a dictionary representation of the data point suitable for DHIS2 JSON format.
@@ -160,8 +160,18 @@ class OrgUnitObj:  # noqa: PLW1641 (no hashing)
         self.openingDate = org_unit_tuple.openingDate
         self.closedDate = org_unit_tuple.closedDate
         self.parent = org_unit_tuple.parent
+        # Parse geometry safely
         geometry = org_unit_tuple.geometry
-        self.geometry = json.loads(geometry) if isinstance(geometry, str) else geometry
+        if pd.notna(geometry):
+            if isinstance(geometry, str):
+                try:
+                    self.geometry = json.loads(geometry)
+                except json.JSONDecodeError:
+                    self.geometry = None
+            else:
+                self.geometry = geometry
+        else:
+            self.geometry = None
 
     def to_json(self) -> dict:
         """Return a dictionary representation of the organizational unit suitable for DHIS2 API.
@@ -176,15 +186,20 @@ class OrgUnitObj:  # noqa: PLW1641 (no hashing)
             "name": self.name,
             "shortName": self.shortName,
             "openingDate": self.openingDate,
-            "closedDate": self.closedDate,
-            "parent": {"id": self.parent.get("id")} if self.parent else None,
         }
-        if self.geometry:
+
+        if pd.notna(self.closedDate):
+            json_dict["closedDate"] = self.closedDate
+
+        if self.parent and self.parent.get("id") and pd.notna(self.parent.get("id")):
+            json_dict["parent"] = {"id": self.parent.get("id")}
+
+        if self.geometry and pd.notna(self.geometry):
             json_dict["geometry"] = {
                 "type": self.geometry["type"],
                 "coordinates": self.geometry["coordinates"],
             }
-        return {k: v for k, v in json_dict.items() if v is not None}
+        return json_dict
 
     def is_valid(self) -> bool:
         """Check if the OrgUnitObj instance has all required attributes set.
@@ -194,15 +209,7 @@ class OrgUnitObj:  # noqa: PLW1641 (no hashing)
         bool
             True if all required attributes are not None, False otherwise.
         """
-        if self.id is None:
-            return False
-        if self.name is None:
-            return False
-        if self.shortName is None:
-            return False
-        if self.openingDate is None:
-            return False
-        return self.parent is not None  # otherwise you are a country
+        return pd.notna(self.id) and pd.notna(self.name) and pd.notna(self.shortName) and pd.notna(self.openingDate)
 
     def __str__(self) -> str:
         return f"OrgUnitObj({self.id}, {self.name})"
