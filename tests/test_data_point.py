@@ -47,6 +47,11 @@ def test_data_point_model_to_json():
 def test_data_point_model_to_json_delete():
     """Test conversion of a Polars DataFrame to JSON using the DataPointModel."""
     data_elements = pl.DataFrame(MockDHIS2Client().data_value_sets.get())
+
+    # Set third datapoint to value None to simulate a deleted value
+    data_elements = data_elements.with_columns(
+        pl.when(pl.arange(0, data_elements.height) == 2).then(None).otherwise(pl.col("value")).alias("value")
+    )
     points_list = [
         DataPointModel(
             dataElement=row["dataElement"],
@@ -59,21 +64,9 @@ def test_data_point_model_to_json_delete():
         for row in data_elements.to_dicts()
     ]
 
-    # append a deleted value at idx 3
-    points_list.append(
-        DataPointModel(
-            dataElement="AAA111",
-            period="202601",
-            orgUnit="OU1",
-            categoryOptionCombo="coc1",
-            attributeOptionCombo="aoc1",
-            value=None,
-        ).to_json()
-    )
-
-    assert len(points_list) == 4
+    assert len(points_list) == 3
     assert points_list[0]["dataElement"] == "AAA111"
     assert points_list[0]["period"] == "202501"
     assert points_list[0].get("comment") is None
-    assert not points_list[3]["value"]
-    assert points_list[3]["comment"] == "deleted value"
+    assert not points_list[2]["value"]
+    assert points_list[2]["comment"] == "deleted value"

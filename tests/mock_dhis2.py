@@ -57,7 +57,7 @@ class MockDataValueSets:
 class MockAnalytics:
     """Mock class to simulate DHIS2 Analytics API responses for testing purposes."""
 
-    def get(self, indicators=None, data_elements=None, periods=None, org_units=None, include_cocs=None) -> list[dict]:  # noqa: ANN001
+    def get(self, indicators=None, data_elements=None, periods=None, org_units=None, include_cocs=False) -> list[dict]:  # noqa: ANN001
         """Simulate the retrieval of analytics data from DHIS2 based on the provided parameters.
 
         Returns
@@ -87,6 +87,30 @@ class MockAnalytics:
                 },
             ]
 
+        if include_cocs:
+            return [
+                {
+                    "dx": "DATAELEMENT1",
+                    "pe": "202501",
+                    "ou": "ORG001",
+                    "co": "COC001",
+                    "value": "6.0",
+                },
+                {
+                    "dx": "DATAELEMENT2",
+                    "pe": "202501",
+                    "ou": "ORG002",
+                    "co": "COC002",
+                    "value": "7.0",
+                },
+                {
+                    "dx": "DATAELEMENT3",
+                    "pe": "202501",
+                    "ou": "ORG003",
+                    "co": "COC003",
+                    "value": "8.0",
+                },
+            ]
         return [
             {
                 "dx": "INDICATOR1",

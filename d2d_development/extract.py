@@ -111,7 +111,10 @@ class IndicatorsExtractor:
         filename : str | None
             Optional filename for the extracted data file. If None, a default name will be used.
         kwargs : dict
-            Additional keyword arguments for data retrieval, such as `last_updated` for filtering data.
+            Additional keyword arguments for data retrieval from analytics like:
+              -include_cocs: bool, whether to include category option combo mapping for indicators.
+              -last_updated: datetime, not implemented yet, placeholder for future use to filter data
+                based on last updated timestamp.
 
         Returns
         -------
@@ -141,18 +144,21 @@ class IndicatorsExtractor:
         if not self.extractor._valid_dhis2_period_format(period):
             raise ValueError(f"Invalid DHIS2 period format: {period}")
 
+        # NOTE: This option is usefull to retrieve data Elements using the analytics endpoint.
         include_cocs = kwargs.get("include_cocs", False)
         try:
             response = self.extractor.dhis2_client.analytics.get(
                 indicators=indicators,
                 periods=[period],
                 org_units=org_units,
-                include_cocs=False,  # avoid client error
+                include_cocs=include_cocs,
             )
         except Exception as e:
             raise Exception(f"Error retrieving indicators data: {e}") from e
 
         raw_data_formatted = pl.DataFrame(response).rename({"pe": "period", "ou": "orgUnit"})
+        if "co" in raw_data_formatted.columns:
+            raw_data_formatted = raw_data_formatted.rename({"co": "categoryOptionCombo"})
         return self.extractor._map_to_dhis2_format(
             raw_data_formatted, data_type=DataType.INDICATOR, map_cocs=include_cocs
         )
@@ -324,9 +330,9 @@ class DHIS2Extractor:
             and `value` based on the data type.
         data_type : str
             The type of data being mapped. Supported values are:
-            - "DATA_ELEMENT": Includes `categoryOptionCombo` and maps `dataElement` to `dx_uid`.
-            - "INDICATOR": Maps `dx` to `dx_uid`.
-            - "REPORTING_RATE": Maps `dx` to `dx_uid` and `rate_type` by split the string by `.`.
+            - "DATA_ELEMENT": Includes `categoryOptionCombo` and maps `dataElement` to `dx`.
+            - "INDICATOR": Maps `dx` to `dx`.
+            - "REPORTING_RATE": Maps `dx` to `dx` and `rateType` by split the string by `.`.
             Default is "DATA_ELEMENT".
         domain_type : str, optional
             The domain of the data if its per period (Agg ex: monthly) or datapoint (Tracker ex: per day):
@@ -334,21 +340,22 @@ class DHIS2Extractor:
             - "TRACKER": For tracker data.
             **NOTE: THIS IS WORK IN PROGRESS AND NOT USED YET**
         map_cocs : bool, optional
-            Whether to include category option combo mapping for indicators.
-            *Only applicable if `data_type` is "INDICATOR". Default is False.
+            NOTE: IndicatorsExtractor can be used to retrieve data elements by passing valid data element ids
+             to the indicators parameter. Therefore we can use the client flag `include_coc` to include `co` column.
+            *Only applicable if `dataType` is "INDICATOR". Default is False.
 
         Returns
         -------
         pl.DataFrame
             A DataFrame formatted to SNIS standards, with the following columns (snake_case):
-            - "data_type": The type of data (DATA_ELEMENT, REPORTING_RATE, or INDICATOR).
-            - "dataElement": Data element, dataset, or indicator UID.
+            - "dataType": The type of data (DATA_ELEMENT, REPORTING_RATE, or INDICATOR).
+            - "dx": Data element, dataset, or indicator UID.
             - "period": Reporting period.
             - "orgUnit": Organization unit.
             - "categoryOptionCombo": (Only for DATA_ELEMENT) Category option combo UID.
             - "attributeOptionCombo": (Only for DATA_ELEMENT) Attribute option combo UID.
-            - "rate_type": (Only for REPORTING_RATE) Rate type.
-            - "domain_type": Data domain (AGGREGATED or TRACKER).
+            - "rateMetric": (Only for REPORTING_RATE) Rate metric.
+            - "domainType": Data domain (AGGREGATED or TRACKER).
             - "value": Data value.
         """
         if dhis_data.height == 0:
