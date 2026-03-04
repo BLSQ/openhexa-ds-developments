@@ -4,7 +4,8 @@ import polars as pl
 
 from d2d_development.extract import DHIS2Extractor
 from d2d_development.push import DHIS2Pusher
-from tests.mock_dhis2 import MockDHIS2Client
+from tests.mock_dhis2_get import MockDHIS2Client
+from tests.mock_dhis2_post import MOCK_DHIS2_OK_RESPONSE, MockDHIS2Response
 
 
 def test_push_serialize_data_point_valid():
@@ -62,3 +63,19 @@ def test_push_classify_points():
     assert len(valid) == 3, "Expected 3 valid data points."
     assert len(to_delete) == 1, "Expected 1 data point marked for deletion"
     assert len(not_valid) == 5, "Expected 4 invalid data points."
+
+
+def test_push_data_points():
+    """Test the push of data points to DHIS2."""
+    data_points = DHIS2Extractor(dhis2_client=MockDHIS2Client()).data_elements._retrieve_data(
+        data_elements=["AAA111"], org_units=[], period="202501"
+    )
+    pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
+
+    valid, _, _ = pusher._classify_data_points(data_points=data_points)
+    valid_data_points = pusher._serialize_data_points(valid)
+
+    with patch.object(pusher.dhis2_client.api.session, "post", return_value=MockDHIS2Response(MOCK_DHIS2_OK_RESPONSE)):
+        pusher._push_data_points(valid_data_points)
+        # Now you can assert on pusher.summary or any other side effect
+        assert pusher.summary["import_counts"]["imported"] == 1

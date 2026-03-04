@@ -4,7 +4,7 @@ from unittest.mock import patch
 import polars as pl
 
 from d2d_development.extract import DHIS2Extractor
-from tests.mock_dhis2 import MockDHIS2Client
+from tests.mock_dhis2_get import MockDHIS2Client
 
 
 def test_extract_map_data_elements():

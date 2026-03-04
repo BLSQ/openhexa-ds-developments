@@ -1,7 +1,7 @@
 import polars as pl
 
 from d2d_development.data_models import DataPointModel
-from tests.mock_dhis2 import MockDHIS2Client
+from tests.mock_dhis2_get import MockDHIS2Client
 
 
 def test_data_point_model_to_str():
@@ -46,7 +46,7 @@ def test_data_point_model_to_json():
 
 def test_data_point_model_to_json_delete():
     """Test conversion of a Polars DataFrame to JSON using the DataPointModel."""
-    data_elements = pl.DataFrame(MockDHIS2Client().data_value_sets.get())
+    data_elements = pl.DataFrame(MockDHIS2Client().data_value_sets.get()).slice(2, 2)
 
     # Set third datapoint to value None to simulate a deleted value
     data_elements = data_elements.with_columns(
@@ -64,9 +64,14 @@ def test_data_point_model_to_json_delete():
         for row in data_elements.to_dicts()
     ]
 
-    assert len(points_list) == 3
-    assert points_list[0]["dataElement"] == "AAA111"
+    assert len(points_list) == 2
+    assert points_list[0]["dataElement"] == "CCC333"
     assert points_list[0]["period"] == "202501"
+    assert points_list[0]["orgUnit"] == "ORG003"
+    assert points_list[0]["categoryOptionCombo"] == "CAT003"
+    assert points_list[0]["attributeOptionCombo"] == "ATTR003"
+    assert points_list[0]["value"] == "25"
     assert points_list[0].get("comment") is None
-    assert not points_list[2]["value"]
-    assert points_list[2]["comment"] == "deleted value"
+    assert points_list[1]["dataElement"] == "DELETE1"
+    assert not points_list[1]["value"]
+    assert points_list[1]["comment"] == "deleted value"

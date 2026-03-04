@@ -211,9 +211,28 @@ class MockAnalytics:
         ]
 
 
+class MockSession:
+    """Mock class to simulate a requests.Session for testing purposes."""
+
+    def post(self, *args, **kwargs: object) -> None:  # noqa: ANN002
+        """Simulate a POST request to the DHIS2 API."""
+        # This will be patched in your test
+        pass
+
+
+class MockAPI:
+    """Mock class to simulate a DHIS2 API client for testing purposes."""
+
+    def __init__(self):
+        self.session = MockSession()
+        self.url = "https://mock-dhis2-instance.org/api"
+
+
 class MockDHIS2Client:
     """Mock class to simulate a DHIS2 client for testing purposes."""
 
     def __init__(self):
         self.data_value_sets = MockDataValueSets()
         self.analytics = MockAnalytics()
+        self.api = MockAPI()
+        self.session = MockSession()

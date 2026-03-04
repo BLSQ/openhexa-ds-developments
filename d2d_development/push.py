@@ -86,9 +86,7 @@ class DHIS2Pusher:
         msg = f"Pushing {len(data_points_valid)} data points."
         current_run.log_info(msg)
         self.logger.info(msg)
-        self._push_data_points(
-            data_point_list=self._serialize_data_points(data_points_valid), logging_interval=self.logging_interval
-        )
+        self._push_data_points(data_point_list=self._serialize_data_points(data_points_valid))
         msg = f"Data points push summary:  {self.summary['import_counts']}"
         current_run.log_info(msg)
         self.logger.info(msg)
@@ -101,9 +99,7 @@ class DHIS2Pusher:
         current_run.log_info(f"Pushing {len(data_points_to_delete)} data points with NA values.")
         self.logger.info(f"Pushing {len(data_points_to_delete)} data points with NA values.")
         self._log_ignored_or_na(data_points_to_delete, is_na=True)
-        self._push_data_points(
-            data_point_list=self._serialize_data_points(data_points_to_delete), logging_interval=self.logging_interval
-        )
+        self._push_data_points(data_point_list=self._serialize_data_points(data_points_to_delete))
 
         current_run.log_info(f"Data points delete summary: {self.summary['import_counts']}")
         self.logger.info(f"Data points delete summary: {self.summary['import_counts']}")
@@ -150,30 +146,40 @@ class DHIS2Pusher:
             for i_e, error in enumerate(errors, start=1):
                 self.logger.error(f"Error response {i_e}: {error}")
 
+    def _post_data_values(self, chunk: list[dict]) -> requests.Response:
+        """Send a POST request to DHIS2 for a chunk of data values.
+
+        Returns
+        -------
+            requests.Response: The response object from the DHIS2 API.
+        """
+        return self.dhis2_client.api.session.post(
+            f"{self.dhis2_client.api.url}/dataValueSets",
+            json={"dataValues": chunk},
+            params={
+                "dryRun": self.dry_run,
+                "importStrategy": self.import_strategy,
+                "preheatCache": True,
+                "skipAudit": True,
+            },
+        )
+
     def _push_data_points(
         self,
         data_point_list: list[dict],
-        logging_interval: int = 50000,
     ) -> None:
         """dry_run: Set to true to get an import summary without actually importing data (DHIS2)."""
         self._reset_summary()
         total_data_points = len(data_point_list)
         processed_points = 0
+        last_logged_at = 0
 
-        for chunk in self._split_list(data_point_list, self.max_post):
+        # for chunk in self._split_list(data_point_list, self.max_post):
+        for chunk_id, chunk in enumerate(self._split_list(data_point_list, self.max_post), start=1):
             r = None
+            response = None
             try:
-                r = self.dhis2_client.api.session.post(
-                    f"{self.dhis2_client.api.url}/dataValueSets",
-                    json={"dataValues": chunk},
-                    params={
-                        "dryRun": self.dry_run,
-                        "importStrategy": self.import_strategy,
-                        "preheatCache": True,
-                        "skipAudit": True,
-                    },  # speed!
-                )
-
+                r = self._post_data_values(chunk)
                 r.raise_for_status()
                 response = self._safe_json(r)
 
@@ -189,18 +195,21 @@ class DHIS2Pusher:
                     self._update_import_counts(response)
                 else:
                     # No response JSON, at least log the request error msg
-                    self.summary["ERRORS"].append(
-                        [f"Request error for period: {chunk[0].get('period', '')} with exception: {e}"]
+                    self.summary["ERRORS"].extend(
+                        [{"chunk": chunk_id, "period": chunk[0].get("period", "-"), "exception": str(e)}]
                     )
                 self._extract_conflicts(response)
 
             processed_points += len(chunk)
+
             # Log every logging_interval points
-            if processed_points // logging_interval > (processed_points - len(chunk)) // logging_interval:
+            if processed_points - last_logged_at >= self.logging_interval:
+                progress_pct = (processed_points / total_data_points) * 100
                 current_run.log_info(
-                    f"{processed_points} / {total_data_points} data points "
-                    f"pushed summary: {self.summary['import_counts']}"
+                    f"{processed_points} / {total_data_points} data points ({progress_pct:.1f}%) "
+                    f" summary: {self.summary['import_counts']}"
                 )
+                last_logged_at = processed_points
 
         # Final summary
         current_run.log_info(
