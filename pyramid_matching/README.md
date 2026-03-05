@@ -1,5 +1,5 @@
-# openhexa-d2d-dev
-Development repo for the D2D OpenHEXA utilities.
+# openhexa-ds-developments
+Development repo for DS team OpenHEXA utilities.
 
 
 Install package : pip install git+https://github.com/BLSQ/openhexa-ds-developments.git#subdirectory=pyramid_matching
