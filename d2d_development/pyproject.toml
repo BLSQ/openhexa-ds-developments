@@ -15,6 +15,7 @@ dependencies = [
     "openhexa.sdk>=1.0.0",  # Baseline version for safety
     "requests>=2.31.0",     # Baseline for modern security/features
     "pandas>=2.2.0",        # Use >=2.2 for compatibility
+    "polars>=1.0.0"
 ]
 
 [tool.setuptools]
