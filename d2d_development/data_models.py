@@ -1,7 +1,99 @@
 import json
+from dataclasses import dataclass
+from enum import Enum
 from typing import NamedTuple
 
 import pandas as pd
+
+
+class DataType(Enum):
+    """Enumeration of supported DHIS2 data types for extraction."""
+
+    DATA_ELEMENT = "DATA_ELEMENT"
+    REPORTING_RATE = "REPORTING_RATE"
+    INDICATOR = "INDICATOR"
+
+
+@dataclass
+class DataPointModel:
+    """Data model representing a DHIS2 data point.
+
+    Attributes
+    ----------
+    dataElement : str
+        The unique identifier for the data element.
+    period : str
+        The reporting period for the data point.
+    orgUnit : str
+        The organizational unit associated with the data point.
+    categoryOptionCombo : str
+        The category option combination identifier.
+    attributeOptionCombo : str
+        The attribute option combination identifier.
+    value : float
+        The value of the data point.
+    """
+
+    dataElement: str  # noqa: N815
+    period: str
+    orgUnit: str  # noqa: N815
+    categoryOptionCombo: str  # noqa: N815
+    attributeOptionCombo: str  # noqa: N815
+    value: str
+
+    def to_json(self) -> dict:
+        """Return a dictionary representation of the data point suitable for DHIS2 JSON format.
+
+        Returns
+        -------
+        dict
+            A dictionary with keys corresponding to DHIS2 data value fields.
+        """
+        if self.value is None:
+            return {
+                "dataElement": self.dataElement,
+                "period": self.period,
+                "orgUnit": self.orgUnit,
+                "categoryOptionCombo": self.categoryOptionCombo,
+                "attributeOptionCombo": self.attributeOptionCombo,
+                "value": "",
+                "comment": "deleted value",
+            }
+
+        return {
+            "dataElement": self.dataElement,
+            "period": self.period,
+            "orgUnit": self.orgUnit,
+            "categoryOptionCombo": self.categoryOptionCombo,
+            "attributeOptionCombo": self.attributeOptionCombo,
+            "value": self.value,
+        }
+
+    def __str__(self) -> str:
+        return (
+            f"DataPointModel("
+            f"dataElement={self.dataElement}, "
+            f"period={self.period}, "
+            f"orgUnit={self.orgUnit}, "
+            f"categoryOptionCombo={self.categoryOptionCombo}, "
+            f"attributeOptionCombo={self.attributeOptionCombo}, "
+            f"value={self.value})"
+        )
+
+
+@dataclass
+class OrgUnitModel:
+    """Helper object definition to represent an organizational unit."""
+
+    id: str
+    name: str
+    shortName: str  # noqa: N815
+    openingDate: str  # noqa: N815
+    closedDate: str  # noqa: N815
+    parent: dict
+    level: int
+    path: str
+    geometry: str
 
 
 class OrgUnitRow(NamedTuple):
@@ -68,8 +160,18 @@ class OrgUnitObj:  # noqa: PLW1641 (no hashing)
         self.openingDate = org_unit_tuple.openingDate
         self.closedDate = org_unit_tuple.closedDate
         self.parent = org_unit_tuple.parent
+        # Parse geometry safely
         geometry = org_unit_tuple.geometry
-        self.geometry = json.loads(geometry) if isinstance(geometry, str) else geometry
+        if pd.notna(geometry):
+            if isinstance(geometry, str):
+                try:
+                    self.geometry = json.loads(geometry)
+                except json.JSONDecodeError:
+                    self.geometry = None
+            else:
+                self.geometry = geometry
+        else:
+            self.geometry = None
 
     def to_json(self) -> dict:
         """Return a dictionary representation of the organizational unit suitable for DHIS2 API.
@@ -84,15 +186,20 @@ class OrgUnitObj:  # noqa: PLW1641 (no hashing)
             "name": self.name,
             "shortName": self.shortName,
             "openingDate": self.openingDate,
-            "closedDate": self.closedDate,
-            "parent": {"id": self.parent.get("id")} if self.parent else None,
         }
-        if self.geometry:
+
+        if pd.notna(self.closedDate):
+            json_dict["closedDate"] = self.closedDate
+
+        if self.parent and self.parent.get("id") and pd.notna(self.parent.get("id")):
+            json_dict["parent"] = {"id": self.parent.get("id")}
+
+        if self.geometry and pd.notna(self.geometry):
             json_dict["geometry"] = {
                 "type": self.geometry["type"],
                 "coordinates": self.geometry["coordinates"],
             }
-        return {k: v for k, v in json_dict.items() if v is not None}
+        return json_dict
 
     def is_valid(self) -> bool:
         """Check if the OrgUnitObj instance has all required attributes set.
@@ -102,15 +209,7 @@ class OrgUnitObj:  # noqa: PLW1641 (no hashing)
         bool
             True if all required attributes are not None, False otherwise.
         """
-        if self.id is None:
-            return False
-        if self.name is None:
-            return False
-        if self.shortName is None:
-            return False
-        if self.openingDate is None:
-            return False
-        return self.parent is not None  # otherwise you are a country
+        return pd.notna(self.id) and pd.notna(self.name) and pd.notna(self.shortName) and pd.notna(self.openingDate)
 
     def __str__(self) -> str:
         return f"OrgUnitObj({self.id}, {self.name})"

@@ -18,11 +18,11 @@ dependencies = [
 ]
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = {"" = ""}
 
 [tool.setuptools.packages.find]
 # Ensures it finds the 'd2d_development' folder inside 'src'
-where = ["src"]
+where = ["."]
 
 [tool.ruff]
 line-length = 120
