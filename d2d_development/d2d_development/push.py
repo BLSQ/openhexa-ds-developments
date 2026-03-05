@@ -56,6 +56,8 @@ class DHIS2Pusher:
             current_run.log_info("Input DataFrame is empty. No data to push.")
             return
 
+        self._reset_summary()
+        self._set_summary_import_options()
         valid, to_delete, to_ignore = self._classify_data_points(df_data)
 
         self._push_valid(valid)
@@ -86,7 +88,15 @@ class DHIS2Pusher:
 
         return valid, to_delete, not_valid
 
-    def _push_valid(self, data_points_valid: list, logging_interval: int = 50000) -> None:
+    def _set_summary_import_options(self):
+        self.summary["import_options"] = {
+            "importStrategy": self.import_strategy,
+            "dryRun": self.dry_run,
+            "preheatCache": True,  # hardcoded for now, could be made configurable if needed
+            "skipAudit": True,  # hardcoded for now, could be made configurable if needed
+        }
+
+    def _push_valid(self, data_points_valid: list) -> None:
         """Push valid values to DHIS2."""
         if len(data_points_valid) == 0:
             current_run.log_info("No data to push.")
@@ -178,7 +188,6 @@ class DHIS2Pusher:
         data_point_list: list[dict],
     ) -> None:
         """dry_run: Set to true to get an import summary without actually importing data (DHIS2)."""
-        self._reset_summary()
         total_data_points = len(data_point_list)
         processed_points = 0
         last_logged_at = 0
