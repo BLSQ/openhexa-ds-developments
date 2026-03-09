@@ -7,6 +7,13 @@ from openhexa.toolbox.dhis2 import DHIS2
 
 from .data_models import DataType
 
+# TODO:
+# 1) Refactor the extractors to (Following DHIS2 client endpoints):
+# -DataValueSetsExtractor (DE)
+# -AnalyticsExtractor (DE, indicators, ReportingRates)
+
+# 2) move logging to a separated function to avoid code repetition.
+
 
 class DataElementsExtractor:
     """Handles downloading and formatting of data elements from DHIS2."""
