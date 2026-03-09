@@ -107,6 +107,28 @@ def test_push_classify_points():
     assert len(not_valid) == 5, "Expected 4 invalid data points."
 
 
+def test_push_log_invalid_data_points():
+    """Test the logging of invalid data points."""
+    data_points = (
+        DHIS2Extractor(dhis2_client=MockDHIS2Client())
+        .data_elements._retrieve_data(data_elements=[], org_units=[], period="202501")
+        .slice(4, 4)  # Select invalid data points (rows 4 to 7) for testing
+    )
+    pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
+    _, _, not_valid = pusher._classify_data_points(data_points)
+
+    with patch.object(pusher, "_log_message") as mock_log_message:
+        pusher._log_ignored_or_na(not_valid)
+        assert mock_log_message.call_count == 5, "Expected a log message for each invalid data point."
+        for idx, call in enumerate(mock_log_message.call_args_list):
+            if idx == 0:
+                log_message = call.args[0]
+                assert "4 data points will be  ignored" in log_message, f"Unexpected log message: {log_message}"
+            else:
+                log_message = call.args[0]
+                assert f"Data point ignored: dx=INVALID{idx}" in log_message, f"Unexpected log message: {log_message}"
+
+
 def test_push_data_point():
     """Test the push of data points to DHIS2."""
     # 1 valid datapoint

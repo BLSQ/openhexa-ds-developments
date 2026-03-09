@@ -50,6 +50,9 @@ class DHIS2Pusher:
         df_data: pd.DataFrame | pl.DataFrame,
     ) -> None:
         """Push formatted data to DHIS2."""
+        self._reset_summary()
+        self._set_summary_import_options()
+
         if isinstance(df_data, pd.DataFrame):
             df_data = pl.from_pandas(df_data)
 
@@ -59,8 +62,6 @@ class DHIS2Pusher:
             self._log_message("Input DataFrame is empty. No data to push.")
             return
 
-        self._reset_summary()
-        self._set_summary_import_options()
         valid, to_delete, to_ignore = self._classify_data_points(df_data)
 
         self._push_valid(valid)
