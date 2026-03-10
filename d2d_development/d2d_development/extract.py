@@ -1,21 +1,17 @@
 import logging
-import tempfile
 from pathlib import Path
 
 import polars as pl
 from openhexa.toolbox.dhis2 import DHIS2
 
 from .data_models import DataType
-from .utils import log_message
+from .exceptions import ExtractorError
+from .utils import log_message, save_to_parquet
 
 # TODO:
 # 1) Refactor the extractors to (Following DHIS2 client endpoints):
 # -DataValueSetsExtractor (DE)
 # -AnalyticsExtractor (DE, indicators, ReportingRates)
-
-
-class ExtractorError(Exception):
-    """Custom exception for all DHIS2Extractor errors."""
 
 
 class DataElementsExtractor:
@@ -344,7 +340,7 @@ class DHIS2Extractor:
         if extract_fname.exists():
             self._log_message(f"Replacing extract for period {period}.")
 
-        self.save_to_parquet(raw_data, extract_fname)
+        save_to_parquet(raw_data, extract_fname)
         return extract_fname
 
     def _map_to_dhis2_format(
@@ -467,29 +463,3 @@ class DHIS2Extractor:
         """
         # TODO: Expand this function to cover more DHIS2 period formats as needed
         return True
-
-    @staticmethod
-    def save_to_parquet(data: pl.DataFrame, filename: Path) -> None:
-        """Safely saves a Polars DataFrame to a Parquet file using a temporary file and atomic replace.
-
-        Args:
-            data (pl.DataFrame): The DataFrame to save.
-            filename (Path): The path where the Parquet file will be saved.
-        """
-        try:
-            if not isinstance(data, pl.DataFrame):
-                raise ExtractorError("The 'data' parameter must be a polars DataFrame.")
-
-            # Write to a temporary file in the same directory
-            with tempfile.NamedTemporaryFile(suffix=".parquet", dir=filename.parent, delete=False) as tmp_file:
-                temp_filename = Path(tmp_file.name)
-                data.write_parquet(temp_filename)
-
-            # Atomically replace the old file with the new one
-            temp_filename.replace(filename)
-
-        except Exception as e:
-            # Clean up the temp file if it exists
-            if "temp_filename" in locals() and temp_filename.exists():
-                temp_filename.unlink()
-            raise ExtractorError(f"Failed to save parquet file to {filename}") from e

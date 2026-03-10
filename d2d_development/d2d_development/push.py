@@ -7,11 +7,8 @@ import requests
 from openhexa.toolbox.dhis2 import DHIS2
 
 from .data_models import DataPointModel
+from .exceptions import PusherError
 from .utils import log_message
-
-
-class PusherError(Exception):
-    """Custom exception for all DHIS2Pusher errors."""
 
 
 class DHIS2Pusher:

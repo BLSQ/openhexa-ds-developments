@@ -1,6 +1,12 @@
 import logging
+import tempfile
+from pathlib import Path
 
+import pandas as pd
+import polars as pl
 from openhexa.sdk import current_run
+
+from .exceptions import ExtractorError
 
 
 def log_message(
@@ -45,3 +51,38 @@ def log_message(
             current_run.log_warning(message)
         elif level == "error":
             current_run.log_error(message)
+
+
+def save_to_parquet(data: pl.DataFrame | pd.DataFrame, filename: Path) -> None:
+    """Safely saves a Pandas or Polars DataFrame to a Parquet file using a temporary file and atomic replace.
+
+    Args:
+        data (Union[pl.DataFrame, pd.DataFrame]): The DataFrame to save.
+        filename (Path): The path where the Parquet file will be saved.
+
+    Raises:
+        ExtractorError: If data is not a valid DataFrame or if saving fails.
+    """
+    try:
+        # Validate input type
+        if not isinstance(data, (pl.DataFrame, pd.DataFrame)):
+            raise ExtractorError("The 'data' parameter must be a Pandas or Polars DataFrame.")
+
+        # Write to a temporary file in the same directory
+        with tempfile.NamedTemporaryFile(suffix=".parquet", dir=filename.parent, delete=False) as tmp_file:
+            temp_filename = Path(tmp_file.name)
+
+            # Use appropriate write method based on DataFrame type
+            if isinstance(data, pl.DataFrame):
+                data.write_parquet(temp_filename)
+            else:  # pd.DataFrame
+                data.to_parquet(temp_filename, index=False)
+
+        # Atomically replace the old file with the new one
+        temp_filename.replace(filename)
+
+    except Exception as e:
+        # Clean up the temp file if it exists
+        if "temp_filename" in locals() and temp_filename.exists():
+            temp_filename.unlink()
+        raise ExtractorError(f"Failed to save parquet file to {filename}") from e
