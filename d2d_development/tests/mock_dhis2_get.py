@@ -143,28 +143,6 @@ class MockAnalytics:
         list[dict]
             A list of dictionaries representing analytics data, formatted similarly to what the DHIS2 API would
         """
-        if data_elements:
-            return [
-                {
-                    "dx": "AAA111.REPORTING_RATE",
-                    "pe": "202409",
-                    "ou": "OU001",
-                    "value": "100",
-                },
-                {
-                    "dx": "BBB222.EXPECTED_REPORTS",
-                    "pe": "202409",
-                    "ou": "OU002",
-                    "value": "0",
-                },
-                {
-                    "dx": "CCC333.REPORTING_RATE",
-                    "pe": "202409",
-                    "ou": "OU003",
-                    "value": "100",
-                },
-            ]
-
         if include_cocs:
             return [
                 {
@@ -189,6 +167,29 @@ class MockAnalytics:
                     "value": "8.0",
                 },
             ]
+
+        if data_elements:
+            return [
+                {
+                    "dx": "AAA111.REPORTING_RATE",
+                    "pe": "202409",
+                    "ou": "OU001",
+                    "value": "100",
+                },
+                {
+                    "dx": "BBB222.EXPECTED_REPORTS",
+                    "pe": "202409",
+                    "ou": "OU002",
+                    "value": "0",
+                },
+                {
+                    "dx": "CCC333.REPORTING_RATE",
+                    "pe": "202409",
+                    "ou": "OU003",
+                    "value": "100",
+                },
+            ]
+
         return [
             {
                 "dx": "INDICATOR1",

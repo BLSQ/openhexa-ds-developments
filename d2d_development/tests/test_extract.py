@@ -244,16 +244,8 @@ def test_extract_get_data_elements_with_indicator_extractor():
     result = des_extractor.analytics._retrieve_data(
         dx=["DATAELEMENT1", "DATAELEMENT2", "DATAELEMENT3"],
         org_units=[],
-        period="202409",
-        include_cocs=True,
+        period="202501",
     )
-
-    # result = DHIS2Extractor(dhis2_client=MockDHIS2Client()).analytics._retrieve_data(
-    #     dx=["DATAELEMENT1", "DATAELEMENT2", "DATAELEMENT3"],
-    #     org_units=[],
-    #     period="202501",
-    #     include_cocs=True,  # Include category option combo in the response
-    # )
 
     assert result.shape == (3, 9)
     assert result.columns == [
@@ -270,7 +262,3 @@ def test_extract_get_data_elements_with_indicator_extractor():
     assert result["dataType"].unique().to_list() == ["dataElement"]
     assert result["dx"].to_list() == ["DATAELEMENT1", "DATAELEMENT2", "DATAELEMENT3"]
     assert result["categoryOptionCombo"].to_list() == ["COC001", "COC002", "COC003"]
-
-
-if __name__ == "__main__":
-    test_extract_get_data_elements_with_indicator_extractor()

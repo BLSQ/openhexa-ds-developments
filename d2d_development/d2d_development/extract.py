@@ -346,7 +346,12 @@ class DHIS2Extractor:
                 "value": dhis_data["value"] if "value" in dhis_data.columns else None,
             }
             if data_type == "dataElement":
-                data["dx"] = dhis_data["dataElement"] if "dataElement" in dhis_data.columns else None
+                if "dataElement" in dhis_data.columns:
+                    data["dx"] = dhis_data["dataElement"]
+                elif "dx" in dhis_data.columns:
+                    data["dx"] = dhis_data["dx"]
+                else:
+                    data["dx"] = None
                 data["categoryOptionCombo"] = (
                     dhis_data["categoryOptionCombo"] if "categoryOptionCombo" in dhis_data.columns else None
                 )
