@@ -85,10 +85,9 @@ class DataElementsExtractor:
                 last_updated=last_updated,  # not implemented yet
             )
         except Exception as e:
-            self.extractor._log_message(
-                "Error retrieving data elements data.", log_current_run=False, error_details=str(e), level="error"
-            )
-            raise ExtractorError(f"Error retrieving data elements data: {e}") from e
+            msg = "Error retrieving data elements data"
+            self.extractor._log_message(msg, log_current_run=False, error_details=str(e), level="error")
+            raise ExtractorError(msg) from e
 
         return self.extractor._map_to_dhis2_format(pl.DataFrame(response), data_type=DataType.DATA_ELEMENT)
 
@@ -169,10 +168,9 @@ class IndicatorsExtractor:
                 include_cocs=include_cocs,
             )
         except Exception as e:
-            self.extractor._log_message(
-                "Error retrieving indicators data.", log_current_run=False, error_details=str(e), level="error"
-            )
-            raise ExtractorError(f"Error retrieving indicators data: {e}") from e
+            msg = "Error retrieving indicators data"
+            self.extractor._log_message(msg, log_current_run=False, error_details=str(e), level="error")
+            raise ExtractorError(msg) from e
 
         raw_data_formatted = pl.DataFrame(response).rename({"pe": "period", "ou": "orgUnit"})
         if "co" in raw_data_formatted.columns:
@@ -253,10 +251,9 @@ class ReportingRatesExtractor:
                 include_cocs=False,  # avoid client error
             )
         except Exception as e:
-            self.extractor._log_message(
-                "Error retrieving reporting rates data.", log_current_run=False, error_details=str(e), level="error"
-            )
-            raise ExtractorError(f"Error retrieving reporting rates data: {e}") from e
+            msg = "Error retrieving reporting rates data"
+            self.extractor._log_message(msg, log_current_run=False, error_details=str(e), level="error")
+            raise ExtractorError(msg) from e
 
         raw_data_formatted = pl.DataFrame(response).rename({"pe": "period", "ou": "orgUnit"})
         return self.extractor._map_to_dhis2_format(raw_data_formatted, data_type=DataType.REPORTING_RATE)
@@ -432,15 +429,15 @@ class DHIS2Extractor:
         except AttributeError as e:
             msg = (
                 f"Failed to map DHIS2 data to the expected format. "
-                f"Possible missing column or attribute: {e}. "
                 f"Input columns: {list(dhis_data.columns)}. "
                 f"Expected columns depend on data_type: {data_type}."
             )
-            self._log_message(msg, log_current_run=False, level="error")
-            raise ExtractorError from e
+            self._log_message(msg, log_current_run=False, error_details=f"AttributeError: {e}", level="error")
+            raise ExtractorError(msg) from e
         except Exception as e:
-            self._log_message(f"Unexpected error while mapping DHIS2 data: {e}", log_current_run=False, level="error")
-            raise ExtractorError(f"Unexpected Error while creating extract format table: {e}") from e
+            msg = "Unexpected error while mapping DHIS2 data"
+            self._log_message(msg, log_current_run=False, error_details=f"{type(e).__name__}: {e}", level="error")
+            raise ExtractorError(msg) from e
 
     def _log_message(self, message: str, level: str = "info", log_current_run: bool = True, error_details: str = ""):
         """Log a message using the configured logging function."""
