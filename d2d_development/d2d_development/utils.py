@@ -6,8 +6,6 @@ import pandas as pd
 import polars as pl
 from openhexa.sdk import current_run
 
-from .exceptions import ExtractorError
-
 
 def log_message(
     logger: logging.Logger,
@@ -32,7 +30,7 @@ def log_message(
     level : str, optional
         The logging level ('info', 'warning', 'error'), by default 'info'.
     exception_class : Exception, optional
-        The exception class to raise for invalid logging levels, by default None.
+        The exception class type to raise for invalid logging levels, by default Exception.
     """
     if level == "info":
         logger.info(message)
@@ -61,28 +59,31 @@ def save_to_parquet(data: pl.DataFrame | pd.DataFrame, filename: Path) -> None:
         filename (Path): The path where the Parquet file will be saved.
 
     Raises:
-        ExtractorError: If data is not a valid DataFrame or if saving fails.
+        ValueError: If data is not a valid DataFrame.
+        Exception: If saving fails.
     """
+    temp_filename = None
     try:
         # Validate input type
         if not isinstance(data, (pl.DataFrame, pd.DataFrame)):
-            raise ExtractorError("The 'data' parameter must be a Pandas or Polars DataFrame.")
+            raise ValueError("The 'data' parameter must be a Pandas or Polars DataFrame.")
 
         # Write to a temporary file in the same directory
         with tempfile.NamedTemporaryFile(suffix=".parquet", dir=filename.parent, delete=False) as tmp_file:
             temp_filename = Path(tmp_file.name)
 
-            # Use appropriate write method based on DataFrame type
-            if isinstance(data, pl.DataFrame):
-                data.write_parquet(temp_filename)
-            else:  # pd.DataFrame
-                data.to_parquet(temp_filename, index=False)
+        # Use appropriate write method based on DataFrame type
+        if isinstance(data, pl.DataFrame):
+            data.write_parquet(temp_filename)
+        else:  # pd.DataFrame
+            data.to_parquet(temp_filename, index=False)
 
         # Atomically replace the old file with the new one
         temp_filename.replace(filename)
+        temp_filename = None  # Mark as successfully moved
 
     except Exception as e:
         # Clean up the temp file if it exists
-        if "temp_filename" in locals() and temp_filename.exists():
+        if temp_filename is not None and temp_filename.exists():
             temp_filename.unlink()
-        raise ExtractorError(f"Failed to save parquet file to {filename}") from e
+        raise Exception(f"Failed to save parquet file to {filename}") from e

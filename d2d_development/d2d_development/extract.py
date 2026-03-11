@@ -53,7 +53,7 @@ class DataElementsExtractor:
 
         Raises
         ------
-        Exception
+        ExtractorError
             If an error occurs during the extract process.
         """
         try:
@@ -135,7 +135,7 @@ class IndicatorsExtractor:
 
         Raises
         ------
-        Exception
+        ExtractorError
             If an error occurs during the extract process.
         """
         try:
@@ -221,7 +221,7 @@ class ReportingRatesExtractor:
 
         Raises
         ------
-        Exception
+        ExtractorError
             If an error occurs during the extract process.
         """
         try:
