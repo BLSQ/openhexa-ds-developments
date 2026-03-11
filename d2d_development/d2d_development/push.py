@@ -4,14 +4,11 @@ import logging
 import pandas as pd
 import polars as pl
 import requests
-from openhexa.sdk import current_run
 from openhexa.toolbox.dhis2 import DHIS2
 
 from .data_models import DataPointModel
-
-
-class PusherError(Exception):
-    """Custom exception for all DHIS2Pusher errors."""
+from .exceptions import PusherError
+from .utils import log_message
 
 
 class DHIS2Pusher:
@@ -44,6 +41,7 @@ class DHIS2Pusher:
         self.summary = {}
         self._reset_summary()
         self.logger = logger if logger else logging.getLogger(__name__)
+        self.log_function = log_message
 
     def push_data(
         self,
@@ -107,40 +105,6 @@ class DHIS2Pusher:
 
         return valid, to_delete, not_valid
 
-    def _log_message(
-        self, message: str, error_details: str = "", log_current_run: bool = True, level: str = "info"
-    ) -> None:
-        """Log a message to both the current run and the configured logger.
-
-        Parameters
-        ----------
-        message : str
-            The message to log.
-        error_details : str, optional
-            Additional details to include in error logs, by default "".
-        log_current_run : bool, optional
-            Whether to log the message to the current run, by default True.
-        level : str, optional
-            The logging level ('info', 'warning', 'error'), by default 'info'.
-        """
-        if level == "info":
-            self.logger.info(message)
-        elif level == "warning":
-            self.logger.warning(message)
-        elif level == "error":
-            self.logger.error(f"{message} Details: {error_details}")
-        else:
-            raise PusherError(f"Invalid logging level: {level}")
-
-        # Log to current_run only if it exists
-        if log_current_run and "current_run" in globals() and current_run is not None:
-            if level == "info":
-                current_run.log_info(message)
-            elif level == "warning":
-                current_run.log_warning(message)
-            elif level == "error":
-                current_run.log_error(message)
-
     def _set_summary_import_options(self):
         self.summary["import_options"] = {
             "importStrategy": self.import_strategy,
@@ -182,6 +146,17 @@ class DHIS2Pusher:
                 self._log_message(
                     f"{i}. Data point {'NA' if is_na else 'ignored'}: {row_str}", log_current_run=False, level="warning"
                 )
+
+    def _log_message(self, message: str, level: str = "info", log_current_run: bool = True, error_details: str = ""):
+        """Log a message using the configured logging function."""
+        self.log_function(
+            logger=self.logger,
+            message=message,
+            error_details=error_details,
+            level=level,
+            log_current_run=log_current_run,
+            exception_class=PusherError,
+        )
 
     def _serialize_data_points(self, data_points: pl.DataFrame) -> list[dict]:
         """Convert a Polars DataFrame of data points into a list of dictionaries for DHIS2 API.

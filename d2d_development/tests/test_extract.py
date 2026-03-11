@@ -10,7 +10,7 @@ from tests.mock_dhis2_get import MockDHIS2Client
 def test_extract_map_data_elements():
     """Test the mapping of data elements."""
     result = DHIS2Extractor(dhis2_client=MockDHIS2Client()).data_elements._retrieve_data(
-        data_elements=["AAA111"], org_units=[], period="202501"
+        data_elements=[], org_units=[], period="202501"
     )
     assert isinstance(result, pl.DataFrame)
     assert result.shape == (9, 9)
@@ -158,7 +158,7 @@ def test_download_replace_replaces_file_and_logs(tmp_path):  # noqa: ANN001
     time.sleep(1)  # Ensure the filesystem timestamp will change
 
     # Patch current_run.log_info to capture log messages
-    with patch("d2d_development.extract.current_run.log_info") as mock_log:
+    with patch.object(extractor.logger, "info") as mock_log:
         # Second call should replace the file and log the replacement
         extractor.data_elements.download_period(
             data_elements=[], org_units=[], period=period, output_dir=output_dir, filename=filename
@@ -184,7 +184,7 @@ def test_extract_download_new_file_exists(tmp_path):  # noqa: ANN001
     assert result_new_path.name == filename
 
     # Second call: should skip and log the skip message
-    with patch("d2d_development.extract.current_run.log_info") as mock_log:
+    with patch.object(extractor.logger, "info") as mock_log:
         result_path = extractor.data_elements.download_period(
             data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
         )
