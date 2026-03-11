@@ -9,8 +9,8 @@ from tests.mock_dhis2_get import MockDHIS2Client
 
 def test_extract_map_data_elements():
     """Test the mapping of data elements."""
-    result = DHIS2Extractor(dhis2_client=MockDHIS2Client()).data_elements._retrieve_data(
-        data_elements=[], org_units=[], period="202501"
+    result = DHIS2Extractor(dhis2_client=MockDHIS2Client()).data_value_sets._retrieve_data(
+        dx=[], org_units=[], period="202501"
     )
     assert isinstance(result, pl.DataFrame)
     assert result.shape == (9, 9)
@@ -25,7 +25,7 @@ def test_extract_map_data_elements():
         "domainType",
         "value",
     ]
-    assert set(result["dataType"]) == {"DATA_ELEMENT"}
+    assert set(result["dataType"]) == {"dataElement"}
     assert set(result["dx"].drop_nulls()) == {
         "AAA111",
         "BBB222",
@@ -62,14 +62,16 @@ def test_extract_map_data_elements():
         "ATTR006",
     }
     assert set(result["rateMetric"]) == {None}
-    assert set(result["domainType"]) == {"AGGREGATED"}
+    assert set(result["domainType"]) == {"aggregated"}
     assert set(result["value"].drop_nulls()) == {"12", "18", "25", "55.0"}
 
 
 def test_extract_map_reporting_rates():
     """Test the mapping of reporting rates."""
-    result = DHIS2Extractor(dhis2_client=MockDHIS2Client()).reporting_rates._retrieve_data(
-        reporting_rates=["AAA111.REPORTING_RATE", "BBB222.EXPECTED_REPORTS", "CCC333.REPORTING_RATE"],
+    rr_extractor = DHIS2Extractor(dhis2_client=MockDHIS2Client())
+    rr_extractor.analytics._set_data_type("reportingRate")
+    result = rr_extractor.analytics._retrieve_data(
+        dx=["AAA111.REPORTING_RATE", "BBB222.EXPECTED_REPORTS", "CCC333.REPORTING_RATE"],
         org_units=[],
         period="202409",
     )
@@ -86,21 +88,23 @@ def test_extract_map_reporting_rates():
         "domainType",
         "value",
     ]
-    assert result["dataType"].unique().to_list() == ["REPORTING_RATE"]
+    assert result["dataType"].unique().to_list() == ["reportingRate"]
     assert result["dx"].to_list() == ["AAA111", "BBB222", "CCC333"]
     assert result["period"].to_list() == ["202409", "202409", "202409"]
     assert result["orgUnit"].to_list() == ["OU001", "OU002", "OU003"]
     assert result["categoryOptionCombo"].to_list() == [None, None, None]
     assert result["attributeOptionCombo"].to_list() == [None, None, None]
     assert result["rateMetric"].to_list() == ["REPORTING_RATE", "EXPECTED_REPORTS", "REPORTING_RATE"]
-    assert result["domainType"].to_list() == ["AGGREGATED", "AGGREGATED", "AGGREGATED"]
+    assert result["domainType"].to_list() == ["aggregated", "aggregated", "aggregated"]
     assert result["value"].to_list() == ["100", "0", "100"]
 
 
 def test_extract_map_indicator():
     """Test the mapping of indicators."""
-    result = DHIS2Extractor(dhis2_client=MockDHIS2Client()).indicators._retrieve_data(
-        indicators=["INDICATOR1", "INDICATOR2", "INDICATOR3"], org_units=[], period="202501"
+    ind_extractor = DHIS2Extractor(dhis2_client=MockDHIS2Client())
+    ind_extractor.analytics._set_data_type("indicator")
+    result = ind_extractor.analytics._retrieve_data(
+        dx=["INDICATOR1", "INDICATOR2", "INDICATOR3"], org_units=[], period="202501"
     )
     assert isinstance(result, pl.DataFrame)
     assert result.shape == (3, 9)
@@ -115,14 +119,14 @@ def test_extract_map_indicator():
         "domainType",
         "value",
     ]
-    assert result["dataType"].unique().to_list() == ["INDICATOR"]
+    assert result["dataType"].unique().to_list() == ["indicator"]
     assert result["dx"].to_list() == ["INDICATOR1", "INDICATOR2", "INDICATOR3"]
     assert result["period"].to_list() == ["202501", "202501", "202501"]
     assert result["orgUnit"].to_list() == ["ORG001", "ORG002", "ORG003"]
     assert result["categoryOptionCombo"].to_list() == [None, None, None]
     assert result["attributeOptionCombo"].to_list() == [None, None, None]
     assert result["rateMetric"].to_list() == [None, None, None]
-    assert result["domainType"].to_list() == ["AGGREGATED", "AGGREGATED", "AGGREGATED"]
+    assert result["domainType"].to_list() == ["aggregated", "aggregated", "aggregated"]
     assert result["value"].to_list() == ["5.0", "7.0", "9.0"]
 
 
@@ -132,8 +136,8 @@ def test_extract_download_replace_no_file(tmp_path):  # noqa: ANN001
     filename = "test_extract_202501.parquet"
 
     # Call download_period
-    result_path = extractor.data_elements.download_period(
-        data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+    result_path = extractor.data_value_sets.download_period(
+        dx=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
     )
 
     # Assert file is created
@@ -149,8 +153,8 @@ def test_download_replace_replaces_file_and_logs(tmp_path):  # noqa: ANN001
     filename = "test_extract.parquet"
 
     # First call creates the file
-    file_path = extractor.data_elements.download_period(
-        data_elements=[], org_units=[], period=period, output_dir=output_dir, filename=filename
+    file_path = extractor.data_value_sets.download_period(
+        dx=[], org_units=[], period=period, output_dir=output_dir, filename=filename
     )
     assert file_path.exists()
     mtime_before = file_path.stat().st_mtime
@@ -160,8 +164,8 @@ def test_download_replace_replaces_file_and_logs(tmp_path):  # noqa: ANN001
     # Patch current_run.log_info to capture log messages
     with patch.object(extractor.logger, "info") as mock_log:
         # Second call should replace the file and log the replacement
-        extractor.data_elements.download_period(
-            data_elements=[], org_units=[], period=period, output_dir=output_dir, filename=filename
+        extractor.data_value_sets.download_period(
+            dx=[], org_units=[], period=period, output_dir=output_dir, filename=filename
         )
         mtime_after = file_path.stat().st_mtime
         # Check that the log message about replacing the extract was called
@@ -177,16 +181,16 @@ def test_extract_download_new_file_exists(tmp_path):  # noqa: ANN001
     filename = "test_extract_202501.parquet"
 
     # First call: file is created
-    result_new_path = extractor.data_elements.download_period(
-        data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+    result_new_path = extractor.data_value_sets.download_period(
+        dx=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
     )
     assert result_new_path.exists()
     assert result_new_path.name == filename
 
     # Second call: should skip and log the skip message
     with patch.object(extractor.logger, "info") as mock_log:
-        result_path = extractor.data_elements.download_period(
-            data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+        result_path = extractor.data_value_sets.download_period(
+            dx=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
         )
         assert result_path == result_new_path
         found = any(
@@ -205,12 +209,12 @@ def test_extract_download_new_return_existing_file(tmp_path):  # noqa: ANN001
         dhis2_client=MockDHIS2Client(), download_mode="DOWNLOAD_NEW", return_existing_file=True
     )
     # Create the file
-    path_true = extractor_true.data_elements.download_period(
-        data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+    path_true = extractor_true.data_value_sets.download_period(
+        dx=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
     )
     # Second call: should return the same file path
-    result_true = extractor_true.data_elements.download_period(
-        data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+    result_true = extractor_true.data_value_sets.download_period(
+        dx=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
     )
     assert result_true == path_true
 
@@ -219,12 +223,12 @@ def test_extract_download_new_return_existing_file(tmp_path):  # noqa: ANN001
         dhis2_client=MockDHIS2Client(), download_mode="DOWNLOAD_NEW", return_existing_file=False
     )
     # Create the file
-    _ = extractor_false.data_elements.download_period(
-        data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+    _ = extractor_false.data_value_sets.download_period(
+        dx=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
     )
     # Second call: should return None
-    result_false = extractor_false.data_elements.download_period(
-        data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+    result_false = extractor_false.data_value_sets.download_period(
+        dx=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
     )
     assert result_false is None
 
@@ -235,12 +239,21 @@ def test_extract_get_data_elements_with_indicator_extractor():
     Passing valid data element ids to the indicators parameter and including
     the `include_cocs=True` flag should allow us to retrieve data elements with the indicators endpoint.
     """
-    result = DHIS2Extractor(dhis2_client=MockDHIS2Client()).indicators._retrieve_data(
-        indicators=["DATAELEMENT1", "DATAELEMENT2", "DATAELEMENT3"],
+    des_extractor = DHIS2Extractor(dhis2_client=MockDHIS2Client())
+    des_extractor.analytics._set_data_type("dataElement")
+    result = des_extractor.analytics._retrieve_data(
+        dx=["DATAELEMENT1", "DATAELEMENT2", "DATAELEMENT3"],
         org_units=[],
-        period="202501",
-        include_cocs=True,  # Include category option combo in the response
+        period="202409",
+        include_cocs=True,
     )
+
+    # result = DHIS2Extractor(dhis2_client=MockDHIS2Client()).analytics._retrieve_data(
+    #     dx=["DATAELEMENT1", "DATAELEMENT2", "DATAELEMENT3"],
+    #     org_units=[],
+    #     period="202501",
+    #     include_cocs=True,  # Include category option combo in the response
+    # )
 
     assert result.shape == (3, 9)
     assert result.columns == [
@@ -254,6 +267,10 @@ def test_extract_get_data_elements_with_indicator_extractor():
         "domainType",
         "value",
     ]
-    assert result["dataType"].unique().to_list() == ["INDICATOR"]
+    assert result["dataType"].unique().to_list() == ["dataElement"]
     assert result["dx"].to_list() == ["DATAELEMENT1", "DATAELEMENT2", "DATAELEMENT3"]
     assert result["categoryOptionCombo"].to_list() == ["COC001", "COC002", "COC003"]
+
+
+if __name__ == "__main__":
+    test_extract_get_data_elements_with_indicator_extractor()

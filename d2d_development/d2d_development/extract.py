@@ -1,20 +1,17 @@
 import logging
 from pathlib import Path
+from typing import Literal, get_args
 
 import polars as pl
 from openhexa.toolbox.dhis2 import DHIS2
 
-from .data_models import DataType
 from .exceptions import ExtractorError
 from .utils import log_message, save_to_parquet
 
-# TODO:
-# 1) Refactor the extractors to (Following DHIS2 client endpoints):
-# -DataValueSetsExtractor (DE)
-# -AnalyticsExtractor (DE, indicators, ReportingRates)
+DataTypeLiteral = Literal["dataElement", "indicator", "reportingRate"]
 
 
-class DataElementsExtractor:
+class DataValueSetsExtractor:
     """Handles downloading and formatting of data elements from DHIS2."""
 
     def __init__(self, extractor: "DHIS2Extractor"):
@@ -22,7 +19,7 @@ class DataElementsExtractor:
 
     def download_period(
         self,
-        data_elements: list[str],
+        dx: list[str],
         org_units: list[str],
         period: str,
         output_dir: Path,
@@ -33,7 +30,7 @@ class DataElementsExtractor:
 
         Parameters
         ----------
-        data_elements : list[str]
+        dx : list[str]
             List of DHIS2 data element UIDs to extract.
         org_units : list[str]
             List of DHIS2 organization unit UIDs to extract data for.
@@ -60,7 +57,7 @@ class DataElementsExtractor:
             self.extractor._log_message(f"Retrieving data elements extract for period : {period}")
             return self.extractor._handle_extract_for_period(
                 handler=self,
-                data_products=data_elements,
+                data_products=dx,
                 org_units=org_units,
                 period=period,
                 output_dir=output_dir,
@@ -73,13 +70,14 @@ class DataElementsExtractor:
             )
             raise ExtractorError(f"Extract data elements download error : {e}") from e
 
-    def _retrieve_data(self, data_elements: list[str], org_units: list[str], period: str, **kwargs) -> pl.DataFrame:  # noqa: ANN003
+    def _retrieve_data(self, dx: list[str], org_units: list[str], period: str, **kwargs) -> pl.DataFrame:  # noqa: ANN003
         if not self.extractor._valid_dhis2_period_format(period):
             raise ExtractorError(f"Invalid DHIS2 period format: {period}")
+
         last_updated = kwargs.get("last_updated")
         try:
             response = self.extractor.dhis2_client.data_value_sets.get(
-                data_elements=data_elements,
+                data_elements=dx,
                 periods=[period],
                 org_units=org_units,
                 last_updated=last_updated,  # not implemented yet
@@ -89,18 +87,20 @@ class DataElementsExtractor:
             self.extractor._log_message(msg, log_current_run=False, error_details=str(e), level="error")
             raise ExtractorError(msg) from e
 
-        return self.extractor._map_to_dhis2_format(pl.DataFrame(response), data_type=DataType.DATA_ELEMENT)
+        return self.extractor._map_to_dhis2_format(pl.DataFrame(response))
 
 
-class IndicatorsExtractor:
-    """Handles downloading and formatting of indicators from DHIS2."""
+class AnalyticsExtractor:
+    """Handles download and formatting of indicators, reporting rates and aggregated data elements from DHIS2."""
 
     def __init__(self, extractor: "DHIS2Extractor"):
         self.extractor = extractor
+        self.data_type = None
 
     def download_period(
         self,
-        indicators: list[str],
+        data_type: DataTypeLiteral,
+        dx: list[str],
         org_units: list[str],
         period: str,
         output_dir: Path,
@@ -111,8 +111,13 @@ class IndicatorsExtractor:
 
         Parameters
         ----------
-        indicators : list[str]
-            List of DHIS2 indicators UIDs to extract.
+        data_type : DataTypeLiteral
+            The type of data being extracted. Supported values are:
+            - dataElement: For aggregated data elements.
+            - indicator: For indicators.
+            - reportingRate: For reporting rates.
+        dx : list[str]
+            List of DHIS2 data product UIDs to extract.
         org_units : list[str]
             List of DHIS2 organization unit UIDs to extract data for.
         period : str
@@ -123,9 +128,10 @@ class IndicatorsExtractor:
             Optional filename for the extracted data file. If None, a default name will be used.
         kwargs : dict
             Additional keyword arguments for data retrieval from analytics like:
-              -include_cocs: bool, whether to include category option combo mapping for indicators.
               -last_updated: datetime, not implemented yet, placeholder for future use to filter data
                 based on last updated timestamp.
+            Example usage:
+                download_period(.., last_updated=datetime(2024, 1, 1)) NOTE: not implemented yet
 
         Returns
         -------
@@ -137,11 +143,13 @@ class IndicatorsExtractor:
         ExtractorError
             If an error occurs during the extract process.
         """
+        self._set_data_type(data_type=data_type)
+
         try:
-            self.extractor._log_message(f"Retrieving indicators extract for period : {period}")
+            self.extractor._log_message(f"Retrieving {self.data_type} extract for period : {period}")
             return self.extractor._handle_extract_for_period(
                 handler=self,
-                data_products=indicators,
+                data_products=dx,
                 org_units=org_units,
                 period=period,
                 output_dir=output_dir,
@@ -154,109 +162,45 @@ class IndicatorsExtractor:
             )
             raise ExtractorError(f"Extract indicators download error : {e}") from e
 
-    def _retrieve_data(self, indicators: list[str], org_units: list[str], period: str, **kwargs) -> pl.DataFrame:  # noqa: ANN003
+    def _retrieve_data(self, dx: list[str], org_units: list[str], period: str, **kwargs) -> pl.DataFrame:  # noqa: ANN003
         if not self.extractor._valid_dhis2_period_format(period):
             raise ExtractorError(f"Invalid DHIS2 period format: {period}")
 
-        # NOTE: This option is usefull to retrieve data Elements using the analytics endpoint.
-        include_cocs = kwargs.get("include_cocs", False)
+        # Determine which parameter to use based on data_type
+        params = {
+            "periods": [period],
+            "org_units": org_units,
+        }
+
+        if self.data_type == "dataElement":
+            params["data_elements"] = dx
+            params["include_cocs"] = True
+        elif self.data_type == "reportingRate":
+            params["data_elements"] = dx
+        elif self.data_type == "indicator":
+            params["indicators"] = dx
+        else:
+            raise ExtractorError(f"Unsupported data_type: {self.data_type}")
+
         try:
-            response = self.extractor.dhis2_client.analytics.get(
-                indicators=indicators,
-                periods=[period],
-                org_units=org_units,
-                include_cocs=include_cocs,
-            )
+            response = self.extractor.dhis2_client.analytics.get(**params)
         except Exception as e:
-            msg = "Error retrieving indicators data"
+            msg = f"Error retrieving {self.data_type} data"
             self.extractor._log_message(msg, log_current_run=False, error_details=str(e), level="error")
             raise ExtractorError(msg) from e
 
         raw_data_formatted = pl.DataFrame(response).rename({"pe": "period", "ou": "orgUnit"})
         if "co" in raw_data_formatted.columns:
             raw_data_formatted = raw_data_formatted.rename({"co": "categoryOptionCombo"})
-        return self.extractor._map_to_dhis2_format(
-            raw_data_formatted, data_type=DataType.INDICATOR, map_cocs=include_cocs
-        )
 
+        return self.extractor._map_to_dhis2_format(raw_data_formatted, data_type=self.data_type)
 
-class ReportingRatesExtractor:
-    """Handles downloading and formatting of reporting rates from DHIS2."""
-
-    def __init__(self, extractor: "DHIS2Extractor"):
-        self.extractor = extractor
-
-    def download_period(
-        self,
-        reporting_rates: list[str],
-        org_units: list[str],
-        period: str,
-        output_dir: Path,
-        filename: str | None = None,
-        **kwargs,  # noqa: ANN003
-    ) -> Path | None:
-        """Download and handle data extracts for the specified periods, saving them to the output directory.
-
-        Parameters
-        ----------
-        reporting_rates : list[str]
-            List of DHIS2 reporting rates UIDs.RATE to extract.
-        org_units : list[str]
-            List of DHIS2 organization unit UIDs to extract data for.
-        period : str
-            DHIS2 period (valid format) to extract data for.
-        output_dir : Path
-            Directory where extracted data files will be saved.
-        filename : str | None
-            Optional filename for the extracted data file. If None, a default name will be used.
-        kwargs : dict
-            Additional keyword arguments for data retrieval, such as `last_updated` for filtering data.
-
-        Returns
-        -------
-        Path | None
-            The path to the extracted data file, or None if no data was extracted.
-
-        Raises
-        ------
-        ExtractorError
-            If an error occurs during the extract process.
-        """
-        try:
-            self.extractor._log_message(f"Retrieving reporting rates extract for period : {period}")
-            return self.extractor._handle_extract_for_period(
-                handler=self,
-                data_products=reporting_rates,
-                org_units=org_units,
-                period=period,
-                output_dir=output_dir,
-                filename=filename,
-                **kwargs,
+    def _set_data_type(self, data_type: DataTypeLiteral):
+        if data_type is None or data_type not in get_args(DataTypeLiteral):
+            raise ExtractorError(
+                f"Incorrect 'data_type' configuration for analytics extraction, use: {get_args(DataTypeLiteral)}."
             )
-        except Exception as e:
-            self.extractor._log_message(
-                "Extract reporting rates download error.", log_current_run=False, error_details=str(e), level="error"
-            )
-            raise ExtractorError(f"Extract reporting rates download error : {e}") from e
-
-    def _retrieve_data(self, reporting_rates: list[str], org_units: list[str], period: str, **kwargs) -> pl.DataFrame:  # noqa: ANN003
-        if not self.extractor._valid_dhis2_period_format(period):
-            raise ExtractorError(f"Invalid DHIS2 period format: {period}")
-
-        try:
-            response = self.extractor.dhis2_client.analytics.get(
-                data_elements=reporting_rates,
-                periods=[period],
-                org_units=org_units,
-                include_cocs=False,  # avoid client error
-            )
-        except Exception as e:
-            msg = "Error retrieving reporting rates data"
-            self.extractor._log_message(msg, log_current_run=False, error_details=str(e), level="error")
-            raise ExtractorError(msg) from e
-
-        raw_data_formatted = pl.DataFrame(response).rename({"pe": "period", "ou": "orgUnit"})
-        return self.extractor._map_to_dhis2_format(raw_data_formatted, data_type=DataType.REPORTING_RATE)
+        self.data_type = data_type
 
 
 class DHIS2Extractor:
@@ -300,16 +244,18 @@ class DHIS2Extractor:
             raise ExtractorError("Invalid 'download_mode', use 'DOWNLOAD_REPLACE' or 'DOWNLOAD_NEW'.")
         self.download_mode = download_mode
         self.last_updated = None  # NOTE: Placeholder for future use
-        self.data_elements = DataElementsExtractor(self)
-        self.indicators = IndicatorsExtractor(self)
-        self.reporting_rates = ReportingRatesExtractor(self)
+        self.data_value_sets = DataValueSetsExtractor(self)
+        self.analytics = AnalyticsExtractor(self)
+        # self.data_elements = DataElementsExtractor(self)
+        # self.indicators = IndicatorsExtractor(self)
+        # self.reporting_rates = ReportingRatesExtractor(self)
         self.return_existing_file = return_existing_file
         self.logger = logger or logging.getLogger(__name__)
         self.log_function = log_message
 
     def _handle_extract_for_period(
         self,
-        handler: DataElementsExtractor | IndicatorsExtractor | ReportingRatesExtractor,
+        handler: DataValueSetsExtractor | AnalyticsExtractor,
         data_products: list[str],
         org_units: list[str],
         period: str,
@@ -343,61 +289,53 @@ class DHIS2Extractor:
     def _map_to_dhis2_format(
         self,
         dhis_data: pl.DataFrame,
-        data_type: DataType = DataType.DATA_ELEMENT,
-        domain_type: str = "AGGREGATED",
-        map_cocs: bool = False,
+        data_type: DataTypeLiteral = "dataElement",
+        domain_type: str = "aggregated",
     ) -> pl.DataFrame:
         """Maps DHIS2 data to a standardized data extraction table.
 
         Parameters
         ----------
         dhis_data : pd.DataFrame
-            Input DataFrame containing DHIS2 data. Must include columns like `period`, `orgUnit`,
-            `categoryOptionCombo(DATA_ELEMENT)`, `attributeOptionCombo(DATA_ELEMENT)`, `dataElement`
-            and `value` based on the data type.
+            Input DataFrame containing DHIS2 data. Must include columns like `dataElement(dataElement)`,
+            `dx(indicator or reportingRate)`, `period`, `orgUnit`, `categoryOptionCombo(dataElement)`,
+            `attributeOptionCombo(dataElement)`, and `value` based on the data_type.
         data_type : str
             The type of data being mapped. Supported values are:
-            - "DATA_ELEMENT": Includes `categoryOptionCombo` and maps `dataElement` to `dx`.
-            - "INDICATOR": Maps `dx` to `dx`.
-            - "REPORTING_RATE": Maps `dx` to `dx` and `rateType` by split the string by `.`.
-            Default is "DATA_ELEMENT".
+            - "dataElement": Includes `categoryOptionCombo`, `attributeOptionCombo` and maps `dataElement` to `dx`.
+            - "indicator": Maps `dx` to `dx`.
+            - "reportingRate": Maps `dx` to columns `dx` and `rateType` by split the string by `.`.
+            Default is "dataElement".
         domain_type : str, optional
             The domain of the data if its per period (Agg ex: monthly) or datapoint (Tracker ex: per day):
-            - "AGGREGATED": For aggregated data (default).
-            - "TRACKER": For tracker data.
+            - "aggregated": For aggregated data (default).
+            - "tracker": For tracker data.
             **NOTE: THIS IS WORK IN PROGRESS AND NOT USED YET**
-        map_cocs : bool, optional
-            NOTE: IndicatorsExtractor can be used to retrieve data elements by passing valid data element ids
-             to the indicators parameter. Therefore we can use the client flag `include_coc` to include `co` column.
-            *Only applicable if `dataType` is "INDICATOR". Default is False.
 
         Returns
         -------
         pl.DataFrame
             A DataFrame formatted to SNIS standards, with the following columns (snake_case):
-            - "dataType": The type of data (DATA_ELEMENT, REPORTING_RATE, or INDICATOR).
+            - "dataType": The type of data (dataElement, indicator, or reportingRate).
             - "dx": Data element, dataset, or indicator UID.
             - "period": Reporting period.
             - "orgUnit": Organization unit.
-            - "categoryOptionCombo": (Only for DATA_ELEMENT) Category option combo UID.
-            - "attributeOptionCombo": (Only for DATA_ELEMENT) Attribute option combo UID.
-            - "rateMetric": (Only for REPORTING_RATE) Rate metric.
-            - "domainType": Data domain (AGGREGATED or TRACKER).
+            - "categoryOptionCombo": (Only for dataElement) Category option combo UID.
+            - "attributeOptionCombo": (Only for dataElement) Attribute option combo UID.
+            - "rateMetric": (Only for reportingRate) Rate metric.
+            - "domainType": Data domain (aggregated or tracker).
             - "value": Data value.
         """
         if dhis_data.height == 0:
             return None
 
-        if data_type not in DataType:
-            raise ExtractorError(
-                "Incorrect 'data_type' configuration use: "
-                "(DataType.DATA_ELEMENT, DataType.REPORTING_RATE, DataType.INDICATOR)."
-            )
+        if data_type not in get_args(DataTypeLiteral):
+            raise ExtractorError(f"Incorrect 'data_type' configuration use: {get_args(DataTypeLiteral)}")
 
         try:
             n = dhis_data.height
             data = {
-                "dataType": [data_type.value] * n,
+                "dataType": [data_type] * n,
                 "dx": None,
                 "period": dhis_data["period"] if "period" in dhis_data.columns else None,
                 "orgUnit": dhis_data["orgUnit"] if "orgUnit" in dhis_data.columns else None,
@@ -407,7 +345,7 @@ class DHIS2Extractor:
                 "domainType": [domain_type] * n,
                 "value": dhis_data["value"] if "value" in dhis_data.columns else None,
             }
-            if data_type == DataType.DATA_ELEMENT:
+            if data_type == "dataElement":
                 data["dx"] = dhis_data["dataElement"] if "dataElement" in dhis_data.columns else None
                 data["categoryOptionCombo"] = (
                     dhis_data["categoryOptionCombo"] if "categoryOptionCombo" in dhis_data.columns else None
@@ -415,15 +353,14 @@ class DHIS2Extractor:
                 data["attributeOptionCombo"] = (
                     dhis_data["attributeOptionCombo"] if "attributeOptionCombo" in dhis_data.columns else None
                 )
-            elif data_type == DataType.REPORTING_RATE:
+            elif data_type == "reportingRate":
                 if "dx" in dhis_data.columns:
                     split = dhis_data["dx"].str.split_exact(".", 1)
                     data["dx"] = split.struct.field("field_0")
                     data["rateMetric"] = split.struct.field("field_1")
-            elif data_type == DataType.INDICATOR:
+            elif data_type == "indicator":
                 data["dx"] = dhis_data["dx"] if "dx" in dhis_data.columns else None
-                if map_cocs and "categoryOptionCombo" in dhis_data.columns:
-                    data["categoryOptionCombo"] = dhis_data["categoryOptionCombo"]
+
             return pl.DataFrame(data)
 
         except AttributeError as e:

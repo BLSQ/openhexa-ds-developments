@@ -1,17 +1,8 @@
 import json
 from dataclasses import dataclass
-from enum import Enum
 from typing import NamedTuple
 
 import pandas as pd
-
-
-class DataType(Enum):
-    """Enumeration of supported DHIS2 data types for extraction."""
-
-    DATA_ELEMENT = "DATA_ELEMENT"
-    REPORTING_RATE = "REPORTING_RATE"
-    INDICATOR = "INDICATOR"
 
 
 @dataclass
