@@ -5,8 +5,8 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openhexa-pyramid-matching"
-version = "0.1.0"
+name = "pyramid-matching"
+version = "0.0.0"
 description = "OpenHEXA pyramid matching development utility library maintained by Bluesquare Data Services team."
 readme = "README.md"
 requires-python = ">=3.11"

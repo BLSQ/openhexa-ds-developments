@@ -1,11 +1,17 @@
-import tempfile
+import logging
 from pathlib import Path
 
 import polars as pl
-from openhexa.sdk import current_run
 from openhexa.toolbox.dhis2 import DHIS2
 
 from .data_models import DataType
+from .exceptions import ExtractorError
+from .utils import log_message, save_to_parquet
+
+# TODO:
+# 1) Refactor the extractors to (Following DHIS2 client endpoints):
+# -DataValueSetsExtractor (DE)
+# -AnalyticsExtractor (DE, indicators, ReportingRates)
 
 
 class DataElementsExtractor:
@@ -47,11 +53,11 @@ class DataElementsExtractor:
 
         Raises
         ------
-        Exception
+        ExtractorError
             If an error occurs during the extract process.
         """
         try:
-            current_run.log_info(f"Retrieving data elements extract for period : {period}")
+            self.extractor._log_message(f"Retrieving data elements extract for period : {period}")
             return self.extractor._handle_extract_for_period(
                 handler=self,
                 data_products=data_elements,
@@ -62,11 +68,14 @@ class DataElementsExtractor:
                 **kwargs,
             )
         except Exception as e:
-            raise Exception(f"Extract data elements download error : {e}") from e
+            self.extractor._log_message(
+                "Extract data elements download error.", log_current_run=False, error_details=str(e), level="error"
+            )
+            raise ExtractorError(f"Extract data elements download error : {e}") from e
 
     def _retrieve_data(self, data_elements: list[str], org_units: list[str], period: str, **kwargs) -> pl.DataFrame:  # noqa: ANN003
         if not self.extractor._valid_dhis2_period_format(period):
-            raise ValueError(f"Invalid DHIS2 period format: {period}")
+            raise ExtractorError(f"Invalid DHIS2 period format: {period}")
         last_updated = kwargs.get("last_updated")
         try:
             response = self.extractor.dhis2_client.data_value_sets.get(
@@ -76,7 +85,9 @@ class DataElementsExtractor:
                 last_updated=last_updated,  # not implemented yet
             )
         except Exception as e:
-            raise Exception(f"Error retrieving data elements data: {e}") from e
+            msg = "Error retrieving data elements data"
+            self.extractor._log_message(msg, log_current_run=False, error_details=str(e), level="error")
+            raise ExtractorError(msg) from e
 
         return self.extractor._map_to_dhis2_format(pl.DataFrame(response), data_type=DataType.DATA_ELEMENT)
 
@@ -123,11 +134,11 @@ class IndicatorsExtractor:
 
         Raises
         ------
-        Exception
+        ExtractorError
             If an error occurs during the extract process.
         """
         try:
-            current_run.log_info(f"Retrieving indicators extract for period : {period}")
+            self.extractor._log_message(f"Retrieving indicators extract for period : {period}")
             return self.extractor._handle_extract_for_period(
                 handler=self,
                 data_products=indicators,
@@ -138,11 +149,14 @@ class IndicatorsExtractor:
                 **kwargs,
             )
         except Exception as e:
-            raise Exception(f"Extract indicators download error : {e}") from e
+            self.extractor._log_message(
+                "Extract indicators download error.", log_current_run=False, error_details=str(e), level="error"
+            )
+            raise ExtractorError(f"Extract indicators download error : {e}") from e
 
     def _retrieve_data(self, indicators: list[str], org_units: list[str], period: str, **kwargs) -> pl.DataFrame:  # noqa: ANN003
         if not self.extractor._valid_dhis2_period_format(period):
-            raise ValueError(f"Invalid DHIS2 period format: {period}")
+            raise ExtractorError(f"Invalid DHIS2 period format: {period}")
 
         # NOTE: This option is usefull to retrieve data Elements using the analytics endpoint.
         include_cocs = kwargs.get("include_cocs", False)
@@ -154,7 +168,9 @@ class IndicatorsExtractor:
                 include_cocs=include_cocs,
             )
         except Exception as e:
-            raise Exception(f"Error retrieving indicators data: {e}") from e
+            msg = "Error retrieving indicators data"
+            self.extractor._log_message(msg, log_current_run=False, error_details=str(e), level="error")
+            raise ExtractorError(msg) from e
 
         raw_data_formatted = pl.DataFrame(response).rename({"pe": "period", "ou": "orgUnit"})
         if "co" in raw_data_formatted.columns:
@@ -203,11 +219,11 @@ class ReportingRatesExtractor:
 
         Raises
         ------
-        Exception
+        ExtractorError
             If an error occurs during the extract process.
         """
         try:
-            current_run.log_info(f"Retrieving reporting rates extract for period : {period}")
+            self.extractor._log_message(f"Retrieving reporting rates extract for period : {period}")
             return self.extractor._handle_extract_for_period(
                 handler=self,
                 data_products=reporting_rates,
@@ -218,11 +234,14 @@ class ReportingRatesExtractor:
                 **kwargs,
             )
         except Exception as e:
-            raise Exception(f"Extract reporting rates download error : {e}") from e
+            self.extractor._log_message(
+                "Extract reporting rates download error.", log_current_run=False, error_details=str(e), level="error"
+            )
+            raise ExtractorError(f"Extract reporting rates download error : {e}") from e
 
     def _retrieve_data(self, reporting_rates: list[str], org_units: list[str], period: str, **kwargs) -> pl.DataFrame:  # noqa: ANN003
         if not self.extractor._valid_dhis2_period_format(period):
-            raise ValueError(f"Invalid DHIS2 period format: {period}")
+            raise ExtractorError(f"Invalid DHIS2 period format: {period}")
 
         try:
             response = self.extractor.dhis2_client.analytics.get(
@@ -232,7 +251,9 @@ class ReportingRatesExtractor:
                 include_cocs=False,  # avoid client error
             )
         except Exception as e:
-            raise Exception(f"Error retrieving reporting rates data: {e}") from e
+            msg = "Error retrieving reporting rates data"
+            self.extractor._log_message(msg, log_current_run=False, error_details=str(e), level="error")
+            raise ExtractorError(msg) from e
 
         raw_data_formatted = pl.DataFrame(response).rename({"pe": "period", "ou": "orgUnit"})
         return self.extractor._map_to_dhis2_format(raw_data_formatted, data_type=DataType.REPORTING_RATE)
@@ -268,17 +289,23 @@ class DHIS2Extractor:
     """
 
     def __init__(
-        self, dhis2_client: DHIS2, download_mode: str = "DOWNLOAD_REPLACE", return_existing_file: bool = False
+        self,
+        dhis2_client: DHIS2,
+        download_mode: str = "DOWNLOAD_REPLACE",
+        return_existing_file: bool = False,
+        logger: logging.Logger | None = None,
     ):
         self.dhis2_client = dhis2_client
         if download_mode not in {"DOWNLOAD_REPLACE", "DOWNLOAD_NEW"}:
-            raise ValueError("Invalid 'download_mode', use 'DOWNLOAD_REPLACE' or 'DOWNLOAD_NEW'.")
+            raise ExtractorError("Invalid 'download_mode', use 'DOWNLOAD_REPLACE' or 'DOWNLOAD_NEW'.")
         self.download_mode = download_mode
         self.last_updated = None  # NOTE: Placeholder for future use
         self.data_elements = DataElementsExtractor(self)
         self.indicators = IndicatorsExtractor(self)
         self.reporting_rates = ReportingRatesExtractor(self)
         self.return_existing_file = return_existing_file
+        self.logger = logger or logging.getLogger(__name__)
+        self.log_function = log_message
 
     def _handle_extract_for_period(
         self,
@@ -298,19 +325,19 @@ class DHIS2Extractor:
 
         # Skip if already exists and mode is DOWNLOAD_NEW
         if self.download_mode == "DOWNLOAD_NEW" and extract_fname.exists():
-            current_run.log_info(f"Extract for period {period} already exists, download skipped.")
+            self._log_message(f"Extract for period {period} already exists, download skipped.")
             return extract_fname if self.return_existing_file else None
 
         raw_data = handler._retrieve_data(data_products, org_units, period, **kwargs)
 
         if raw_data is None:
-            current_run.log_info(f"Nothing to save for period {period}.")
+            self._log_message(f"Nothing to save for period {period}.")
             return None
 
         if extract_fname.exists():
-            current_run.log_info(f"Replacing extract for period {period}.")
+            self._log_message(f"Replacing extract for period {period}.")
 
-        self.save_to_parquet(raw_data, extract_fname)
+        save_to_parquet(raw_data, extract_fname)
         return extract_fname
 
     def _map_to_dhis2_format(
@@ -362,7 +389,7 @@ class DHIS2Extractor:
             return None
 
         if data_type not in DataType:
-            raise ValueError(
+            raise ExtractorError(
                 "Incorrect 'data_type' configuration use: "
                 "(DataType.DATA_ELEMENT, DataType.REPORTING_RATE, DataType.INDICATOR)."
             )
@@ -400,9 +427,28 @@ class DHIS2Extractor:
             return pl.DataFrame(data)
 
         except AttributeError as e:
-            raise AttributeError(f"missing extract data, required attribute for format: {e}") from e
+            msg = (
+                f"Failed to map DHIS2 data to the expected format. "
+                f"Input columns: {list(dhis_data.columns)}. "
+                f"Expected columns depend on data_type: {data_type}."
+            )
+            self._log_message(msg, log_current_run=False, error_details=f"AttributeError: {e}", level="error")
+            raise ExtractorError(msg) from e
         except Exception as e:
-            raise Exception(f"Unexpected Error while creating extract format table: {e}") from e
+            msg = "Unexpected error while mapping DHIS2 data"
+            self._log_message(msg, log_current_run=False, error_details=f"{type(e).__name__}: {e}", level="error")
+            raise ExtractorError(msg) from e
+
+    def _log_message(self, message: str, level: str = "info", log_current_run: bool = True, error_details: str = ""):
+        """Log a message using the configured logging function."""
+        self.log_function(
+            logger=self.logger,
+            message=message,
+            error_details=error_details,
+            level=level,
+            log_current_run=log_current_run,
+            exception_class=ExtractorError,
+        )
 
     def _valid_dhis2_period_format(self, dhis2_period: str) -> bool:
         """Validate if the given period string is in a valid DHIS2 format.
@@ -414,29 +460,3 @@ class DHIS2Extractor:
         """
         # TODO: Expand this function to cover more DHIS2 period formats as needed
         return True
-
-    @staticmethod
-    def save_to_parquet(data: pl.DataFrame, filename: Path) -> None:
-        """Safely saves a Polars DataFrame to a Parquet file using a temporary file and atomic replace.
-
-        Args:
-            data (pl.DataFrame): The DataFrame to save.
-            filename (Path): The path where the Parquet file will be saved.
-        """
-        try:
-            if not isinstance(data, pl.DataFrame):
-                raise TypeError("The 'data' parameter must be a polars DataFrame.")
-
-            # Write to a temporary file in the same directory
-            with tempfile.NamedTemporaryFile(suffix=".parquet", dir=filename.parent, delete=False) as tmp_file:
-                temp_filename = Path(tmp_file.name)
-                data.write_parquet(temp_filename)
-
-            # Atomically replace the old file with the new one
-            temp_filename.replace(filename)
-
-        except Exception as e:
-            # Clean up the temp file if it exists
-            if "temp_filename" in locals() and temp_filename.exists():
-                temp_filename.unlink()
-            raise RuntimeError(f"Failed to save parquet file to {filename}") from e
