@@ -5,7 +5,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openhexa-d2d-development"
+name = "pyramid-matching"
 version = "0.0.0"
 description = "OpenHEXA pyramid matching development utililty library maintained by Bluesquare Data Services team."
 readme = "README.md"
@@ -24,7 +24,6 @@ dependencies = [
 package-dir = {"" = ""}
 
 [tool.setuptools.packages.find]
-# Ensures it finds the 'd2d_development' folder inside 'src'
 where = ["."]
 
 [tool.ruff]
