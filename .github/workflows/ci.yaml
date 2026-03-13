@@ -21,16 +21,20 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/blsq/openhexa-blsq-environment:1.16.2
-      options: --user root
+    strategy:
+      matrix:
+        package: [d2d_development, pyramid_matching]
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
-          fetch-depth: 0
+          python-version: "3.11"
 
       - name: Install package with dev dependencies
         run: pip install -e ".[dev]"
+        working-directory: ${{ matrix.package }}
 
       - name: Run tests with coverage
         run: pytest --cov
+        working-directory: ${{ matrix.package }}

@@ -1,6 +1,4 @@
 [build-system]
-# These lines tell pip what tools are needed to actually build your package.
-# This is standard for almost all modern Python projects.
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
@@ -11,14 +9,18 @@ description = "OpenHEXA pyramid matching development utility library maintained 
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "openhexa-toolbox>=2.0.0",
-    "openhexa.sdk>=1.0.0",  # Baseline version for safety
-    "requests>=2.31.0",     # Baseline for modern security/features
-    "pandas>=2.2.0",        # Use >=2.2 for compatibility
+    "openhexa.sdk>=1.0.0",
     "rapidfuzz>=3.0.0",
     "shapely>=2.0.0",
-    "polars>=1.0.0"
+    "polars>=1.0.0",
 ]
+
+[project.optional-dependencies]
+# These we only need to install when running the test, not when installing the package
+dev = ["pytest", "pytest-cov"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.setuptools]
 package-dir = {"" = ""}
@@ -26,4 +28,3 @@ package-dir = {"" = ""}
 [tool.setuptools.packages.find]
 where = ["."]
 exclude = ["tests*"]
-
