@@ -13,11 +13,12 @@ dependencies = [
     "rapidfuzz>=3.0.0",
     "shapely>=2.0.0",
     "polars>=1.0.0",
+    "pandas>=2.3.1",
 ]
 
 [project.optional-dependencies]
 # These we only need to install when running the test, not when installing the package
-dev = ["pytest", "pytest-cov"]
+dev = ["pytest", "pytest-cov", "pyarrow"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
