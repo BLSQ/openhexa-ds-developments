@@ -2,16 +2,16 @@ import time
 from unittest.mock import patch
 
 import polars as pl
-
 from d2d_development.extract import DHIS2Extractor
+
 from tests.mock_dhis2_get import MockDHIS2Client
 
 
 def test_extract_map_data_elements():
     """Test the mapping of data elements."""
-    result = DHIS2Extractor(
-        dhis2_client=MockDHIS2Client()
-    ).data_elements._retrieve_data(data_elements=[], org_units=[], period="202501")
+    result = DHIS2Extractor(dhis2_client=MockDHIS2Client()).data_elements._retrieve_data(
+        data_elements=[], org_units=[], period="202501"
+    )
     assert isinstance(result, pl.DataFrame)
     assert result.shape == (9, 9)
     assert result.columns == [
@@ -68,9 +68,7 @@ def test_extract_map_data_elements():
 
 def test_extract_map_reporting_rates():
     """Test the mapping of reporting rates."""
-    result = DHIS2Extractor(
-        dhis2_client=MockDHIS2Client()
-    ).reporting_rates._retrieve_data(
+    result = DHIS2Extractor(dhis2_client=MockDHIS2Client()).reporting_rates._retrieve_data(
         reporting_rates=[
             "AAA111.REPORTING_RATE",
             "BBB222.EXPECTED_REPORTS",
@@ -140,9 +138,7 @@ def test_extract_map_indicator():
 
 def test_extract_download_replace_no_file(tmp_path):  # noqa: ANN001
     """Test DOWNLOAD_REPLACE mode, downloads and saves data to a Parquet file."""
-    extractor = DHIS2Extractor(
-        dhis2_client=MockDHIS2Client(), download_mode="DOWNLOAD_REPLACE"
-    )
+    extractor = DHIS2Extractor(dhis2_client=MockDHIS2Client(), download_mode="DOWNLOAD_REPLACE")
     filename = "test_extract_202501.parquet"
 
     # Call download_period
@@ -161,9 +157,7 @@ def test_extract_download_replace_no_file(tmp_path):  # noqa: ANN001
 
 def test_download_replace_replaces_file_and_logs(tmp_path):  # noqa: ANN001
     """Test DOWNLOAD_REPLACE mode, replaces the file if it already exists and logs the replacement."""
-    extractor = DHIS2Extractor(
-        dhis2_client=MockDHIS2Client(), download_mode="DOWNLOAD_REPLACE"
-    )
+    extractor = DHIS2Extractor(dhis2_client=MockDHIS2Client(), download_mode="DOWNLOAD_REPLACE")
     output_dir = tmp_path
     period = "202501"
     filename = "test_extract.parquet"
@@ -193,10 +187,7 @@ def test_download_replace_replaces_file_and_logs(tmp_path):  # noqa: ANN001
         )
         mtime_after = file_path.stat().st_mtime
         # Check that the log message about replacing the extract was called
-        found = any(
-            "Replacing extract for period 202501" in str(call.args[0])
-            for call in mock_log.call_args_list
-        )
+        found = any("Replacing extract for period 202501" in str(call.args[0]) for call in mock_log.call_args_list)
         assert found, "Expected log message about replacing extract not found"
         # Check that the file was actually replaced (mtime changed)
         assert mtime_after > mtime_before, "File was not actually replaced"
@@ -233,8 +224,7 @@ def test_extract_download_new_file_exists(tmp_path):  # noqa: ANN001
         )
         assert result_path == result_new_path
         found = any(
-            "Extract for period 202501 already exists, download skipped."
-            in str(call.args[0])
+            "Extract for period 202501 already exists, download skipped." in str(call.args[0])
             for call in mock_log.call_args_list
         )
         assert found, "Expected log message about skipping extract not found"

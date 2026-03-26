@@ -5,7 +5,6 @@ from unittest.mock import Mock, patch
 import pandas as pd
 import polars as pl
 import pytest
-
 from d2d_development.exceptions import ExtractorError
 from d2d_development.utils import log_message, save_to_parquet
 
@@ -106,9 +105,7 @@ def test_write_exception_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     df = pd.DataFrame({"a": [1]})
     file = tmp_path / "fail.parquet"
     # Patch to_parquet to raise
-    monkeypatch.setattr(
-        df, "to_parquet", lambda *a, **k: (_ for _ in ()).throw(Exception("fail"))
-    )
+    monkeypatch.setattr(df, "to_parquet", lambda *a, **k: (_ for _ in ()).throw(Exception("fail")))
     with pytest.raises(ExtractorError):
         save_to_parquet(df, file)
     # Check no temp files left
