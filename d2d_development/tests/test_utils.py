@@ -106,7 +106,9 @@ def test_write_exception_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     df = pd.DataFrame({"a": [1]})
     file = tmp_path / "fail.parquet"
     # Patch to_parquet to raise
-    monkeypatch.setattr(df, "to_parquet", lambda *a, **k: (_ for _ in ()).throw(Exception("fail")))
+    monkeypatch.setattr(
+        df, "to_parquet", lambda *a, **k: (_ for _ in ()).throw(Exception("fail"))
+    )
     with pytest.raises(ExtractorError):
         save_to_parquet(df, file)
     # Check no temp files left

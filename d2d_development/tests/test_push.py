@@ -22,7 +22,14 @@ from tests.mock_dhis2_post import (
 def test_push_no_data_to_push():
     """Test the push of data points to DHIS2."""
     pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
-    cols = ["dx", "period", "orgUnit", "categoryOptionCombo", "attributeOptionCombo", "value"]
+    cols = [
+        "dx",
+        "period",
+        "orgUnit",
+        "categoryOptionCombo",
+        "attributeOptionCombo",
+        "value",
+    ]
     empty_df = pl.DataFrame({col: [] for col in cols})
     with patch.object(DHIS2Pusher, "_log_message") as mock_log_message:
         pusher.push_data(empty_df)
@@ -35,18 +42,26 @@ def test_push_missing_mandatory_columns():
     pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
     cols = ["period", "orgUnit", "categoryOptionCombo", "attributeOptionCombo", "value"]
     empty_df = pl.DataFrame({col: [] for col in cols})
-    with pytest.raises(PusherError, match=r"Input data is missing mandatory columns: dx"):
+    with pytest.raises(
+        PusherError, match=r"Input data is missing mandatory columns: dx"
+    ):
         pusher.push_data(df_data=empty_df)
 
 
 def test_push_wrong_input_type():
     """Test the push of data points to DHIS2."""
     pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
-    with pytest.raises(PusherError, match=r"Input data must be a pandas or polars DataFrame."):
+    with pytest.raises(
+        PusherError, match=r"Input data must be a pandas or polars DataFrame."
+    ):
         pusher.push_data(df_data=[])
-    with pytest.raises(PusherError, match=r"Input data must be a pandas or polars DataFrame."):
+    with pytest.raises(
+        PusherError, match=r"Input data must be a pandas or polars DataFrame."
+    ):
         pusher.push_data(df_data="not a dataframe")
-    with pytest.raises(PusherError, match=r"Input data must be a pandas or polars DataFrame."):
+    with pytest.raises(
+        PusherError, match=r"Input data must be a pandas or polars DataFrame."
+    ):
         pusher.push_data(df_data={})
 
 
@@ -54,7 +69,9 @@ def test_push_serialize_data_point_valid():
     """Test the serialization of a DataPointModel to JSON format for DHIS2."""
     data_point = (
         DHIS2Extractor(dhis2_client=MockDHIS2Client())
-        .data_elements._retrieve_data(data_elements=["AAA111"], org_units=[], period="202501")
+        .data_elements._retrieve_data(
+            data_elements=["AAA111"], org_units=[], period="202501"
+        )
         .slice(0, 1)
     )
 
@@ -73,7 +90,9 @@ def test_push_serialize_data_point_to_delete():
     """Test the serialization of a DataPointModel to delete JSON format for DHIS2."""
     data_point = (
         DHIS2Extractor(dhis2_client=MockDHIS2Client())
-        .data_elements._retrieve_data(data_elements=["AAA111"], org_units=[], period="202501")
+        .data_elements._retrieve_data(
+            data_elements=["AAA111"], org_units=[], period="202501"
+        )
         .slice(3, 1)
     )
 
@@ -91,7 +110,9 @@ def test_push_serialize_data_point_to_delete():
 
 def test_push_classify_points():
     """Test the mapping of data elements."""
-    data_points = DHIS2Extractor(dhis2_client=MockDHIS2Client()).data_elements._retrieve_data(
+    data_points = DHIS2Extractor(
+        dhis2_client=MockDHIS2Client()
+    ).data_elements._retrieve_data(
         data_elements=["AAA111", "BBB222", "CCC333"], org_units=[], period="202501"
     )
     assert isinstance(data_points, pl.DataFrame)
@@ -119,14 +140,20 @@ def test_push_log_invalid_data_points():
 
     with patch.object(pusher, "_log_message") as mock_log_message:
         pusher._log_ignored_or_na(not_valid)
-        assert mock_log_message.call_count == 5, "Expected a log message for each invalid data point."
+        assert mock_log_message.call_count == 5, (
+            "Expected a log message for each invalid data point."
+        )
         for idx, call in enumerate(mock_log_message.call_args_list):
             if idx == 0:
                 log_message = call.args[0]
-                assert "4 data points will be  ignored" in log_message, f"Unexpected log message: {log_message}"
+                assert "4 data points will be  ignored" in log_message, (
+                    f"Unexpected log message: {log_message}"
+                )
             else:
                 log_message = call.args[0]
-                assert f"Data point ignored: dx=INVALID{idx}" in log_message, f"Unexpected log message: {log_message}"
+                assert f"Data point ignored: dx=INVALID{idx}" in log_message, (
+                    f"Unexpected log message: {log_message}"
+                )
 
 
 def test_push_data_point():
@@ -134,13 +161,19 @@ def test_push_data_point():
     # 1 valid datapoint
     data_points = (
         DHIS2Extractor(dhis2_client=MockDHIS2Client())
-        .data_elements._retrieve_data(data_elements=["AAA111"], org_units=[], period="202501")
+        .data_elements._retrieve_data(
+            data_elements=["AAA111"], org_units=[], period="202501"
+        )
         .slice(0, 1)
     )
 
     pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
     # MOCK_DHIS2_OK_RESPONSE was manually manufactured to simulate a successful import response from DHIS2 for tests
-    with patch.object(pusher.dhis2_client.api.session, "post", return_value=MockDHIS2Response(MOCK_DHIS2_OK_RESPONSE)):
+    with patch.object(
+        pusher.dhis2_client.api.session,
+        "post",
+        return_value=MockDHIS2Response(MOCK_DHIS2_OK_RESPONSE),
+    ):
         pusher.push_data(data_points)
         assert pusher.summary["import_counts"]["imported"] == 1
         assert pusher.summary["import_counts"]["ignored"] == 0
@@ -162,11 +195,16 @@ def test_push_data_points_connection_error():
         "post",
         return_value=MockDHIS2Response(MOCK_DHIS2_ERROR_503_RESPONSE, status_code=503),
     ):
-        with pytest.raises(PusherError, match=r"Server error: Service temporarily unavailable"):
+        with pytest.raises(
+            PusherError, match=r"Server error: Service temporarily unavailable"
+        ):
             pusher._push_data_points([{"dummy_datapoint": "1"}])
         # After the exception, check the summary
         assert len(pusher.summary["ERRORS"]) == 1
-        assert pusher.summary["ERRORS"][0]["message"] == "Server error: Service temporarily unavailable"
+        assert (
+            pusher.summary["ERRORS"][0]["message"]
+            == "Server error: Service temporarily unavailable"
+        )
         assert pusher.summary["ERRORS"][0]["server_error_code"] == "503"
 
 
@@ -207,9 +245,13 @@ def test_push_data_points_data_element_error():
     with patch.object(
         pusher.dhis2_client.api.session,
         "post",
-        return_value=MockDHIS2Response(MOCK_DHIS2_ERROR_409_RESPONSE_DE, status_code=409),
+        return_value=MockDHIS2Response(
+            MOCK_DHIS2_ERROR_409_RESPONSE_DE, status_code=409
+        ),
     ):
-        pusher._push_data_points(invalid_data_points)  # access private method for error handling testing
+        pusher._push_data_points(
+            invalid_data_points
+        )  # access private method for error handling testing
         assert pusher.summary["import_counts"]["imported"] == 1
         assert pusher.summary["import_counts"]["updated"] == 0
         assert pusher.summary["import_counts"]["ignored"] == 2
@@ -256,9 +298,13 @@ def test_push_data_points_org_unit_error():
     with patch.object(
         pusher.dhis2_client.api.session,
         "post",
-        return_value=MockDHIS2Response(MOCK_DHIS2_ERROR_409_RESPONSE_ORG_UNITS, status_code=409),
+        return_value=MockDHIS2Response(
+            MOCK_DHIS2_ERROR_409_RESPONSE_ORG_UNITS, status_code=409
+        ),
     ):
-        pusher._push_data_points(invalid_data_points)  # access private method for error handling testing
+        pusher._push_data_points(
+            invalid_data_points
+        )  # access private method for error handling testing
         assert pusher.summary["import_counts"]["imported"] == 1
         assert pusher.summary["import_counts"]["updated"] == 0
         assert pusher.summary["import_counts"]["ignored"] == 2
@@ -305,9 +351,13 @@ def test_push_data_points_period_error():
     with patch.object(
         pusher.dhis2_client.api.session,
         "post",
-        return_value=MockDHIS2Response(MOCK_DHIS2_ERROR_409_RESPONSE_PERIOD, status_code=409),
+        return_value=MockDHIS2Response(
+            MOCK_DHIS2_ERROR_409_RESPONSE_PERIOD, status_code=409
+        ),
     ):
-        pusher._push_data_points(invalid_data_points)  # access private method for error handling testing
+        pusher._push_data_points(
+            invalid_data_points
+        )  # access private method for error handling testing
         assert pusher.summary["import_counts"]["imported"] == 1
         assert pusher.summary["import_counts"]["updated"] == 0
         assert pusher.summary["import_counts"]["ignored"] == 2
@@ -354,9 +404,13 @@ def test_push_data_points_coc_error():
     with patch.object(
         pusher.dhis2_client.api.session,
         "post",
-        return_value=MockDHIS2Response(MOCK_DHIS2_ERROR_409_RESPONSE_COC, status_code=409),
+        return_value=MockDHIS2Response(
+            MOCK_DHIS2_ERROR_409_RESPONSE_COC, status_code=409
+        ),
     ):
-        pusher._push_data_points(invalid_data_points)  # access private method for error handling testing
+        pusher._push_data_points(
+            invalid_data_points
+        )  # access private method for error handling testing
         assert pusher.summary["import_counts"]["imported"] == 1
         assert pusher.summary["import_counts"]["updated"] == 0
         assert pusher.summary["import_counts"]["ignored"] == 2
@@ -403,9 +457,13 @@ def test_push_data_points_aoc_error():
     with patch.object(
         pusher.dhis2_client.api.session,
         "post",
-        return_value=MockDHIS2Response(MOCK_DHIS2_ERROR_409_RESPONSE_AOC, status_code=409),
+        return_value=MockDHIS2Response(
+            MOCK_DHIS2_ERROR_409_RESPONSE_AOC, status_code=409
+        ),
     ):
-        pusher._push_data_points(invalid_data_points)  # access private method for error handling testing
+        pusher._push_data_points(
+            invalid_data_points
+        )  # access private method for error handling testing
         assert pusher.summary["import_counts"]["imported"] == 1
         assert pusher.summary["import_counts"]["updated"] == 0
         assert pusher.summary["import_counts"]["ignored"] == 2
@@ -452,9 +510,13 @@ def test_push_data_points_value_format_error():
     with patch.object(
         pusher.dhis2_client.api.session,
         "post",
-        return_value=MockDHIS2Response(MOCK_DHIS2_ERROR_409_RESPONSE_VALUE_FORMAT, status_code=409),
+        return_value=MockDHIS2Response(
+            MOCK_DHIS2_ERROR_409_RESPONSE_VALUE_FORMAT, status_code=409
+        ),
     ):
-        pusher._push_data_points(invalid_data_points)  # access private method for error handling testing
+        pusher._push_data_points(
+            invalid_data_points
+        )  # access private method for error handling testing
         assert pusher.summary["import_counts"]["imported"] == 2
         assert pusher.summary["import_counts"]["updated"] == 0
         assert pusher.summary["import_counts"]["ignored"] == 1

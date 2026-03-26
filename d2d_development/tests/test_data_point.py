@@ -39,8 +39,13 @@ def test_data_point_model_to_json():
     assert payload["dataElement"] == data_elements[0]["dataElement"].item()
     assert payload["period"] == data_elements[0]["period"].item()
     assert payload["orgUnit"] == data_elements[0]["orgUnit"].item()
-    assert payload["categoryOptionCombo"] == data_elements[0]["categoryOptionCombo"].item()
-    assert payload["attributeOptionCombo"] == data_elements[0]["attributeOptionCombo"].item()
+    assert (
+        payload["categoryOptionCombo"] == data_elements[0]["categoryOptionCombo"].item()
+    )
+    assert (
+        payload["attributeOptionCombo"]
+        == data_elements[0]["attributeOptionCombo"].item()
+    )
     assert payload["value"] == data_elements[0]["value"].item()
 
 
@@ -50,7 +55,10 @@ def test_data_point_model_to_json_delete():
 
     # Set third datapoint to value None to simulate a deleted value
     data_elements = data_elements.with_columns(
-        pl.when(pl.arange(0, data_elements.height) == 2).then(None).otherwise(pl.col("value")).alias("value")
+        pl.when(pl.arange(0, data_elements.height) == 2)
+        .then(None)
+        .otherwise(pl.col("value"))
+        .alias("value")
     )
     points_list = [
         DataPointModel(

@@ -21,7 +21,6 @@ class DHIS2Pusher:
         dry_run: bool = True,
         max_post: int = 500,
         logging_interval: int = 50000,
-        mandatory_fields: list[str] | None = None,
         logger: logging.Logger | None = None,
     ):
         self.dhis2_client = dhis2_client
@@ -29,11 +28,7 @@ class DHIS2Pusher:
         if import_strategy not in {"CREATE", "UPDATE", "CREATE_AND_UPDATE"}:
             raise PusherError("Invalid import strategy (use 'CREATE', 'UPDATE' or 'CREATE_AND_UPDATE')")
 
-        if mandatory_fields is None:
-            self.mandatory_fields = ["dx", "period", "orgUnit", "categoryOptionCombo", "attributeOptionCombo", "value"]
-        else:
-            self.mandatory_fields = mandatory_fields
-
+        self.mandatory_fields = ["dx", "period", "orgUnit", "categoryOptionCombo", "attributeOptionCombo", "value"]
         self.import_strategy = import_strategy
         self.dry_run = dry_run
         self.max_post = max_post
@@ -185,7 +180,7 @@ class DHIS2Pusher:
         else:
             self._log_message(f"Logging {len(errors)} error(s) from import summary.", level="error")
             for i_e, error in enumerate(errors, start=1):
-                self._log_message(f"Error response {i_e}: {error}", level="error")
+                self._log_message(f"Error response {i_e}: {error}", log_current_run=False, level="error")
 
     def _post(self, chunk: list[dict]) -> requests.Response:
         """Send a POST request to DHIS2 for a chunk of data values.

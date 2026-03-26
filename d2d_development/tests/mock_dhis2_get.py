@@ -1,7 +1,9 @@
 class MockDataValueSets:
     """Mock class to simulate DHIS2 DataValueSets API responses for testing purposes."""
 
-    def get(self, data_elements=None, periods=None, org_units=None, last_updated=None) -> list[dict]:  # noqa: ANN001
+    def get(
+        self, data_elements=None, periods=None, org_units=None, last_updated=None
+    ) -> list[dict]:  # noqa: ANN001
         """Simulate the retrieval of data values from DHIS2 based on the provided parameters.
 
         Returns
@@ -135,7 +137,14 @@ class MockDataValueSets:
 class MockAnalytics:
     """Mock class to simulate DHIS2 Analytics API responses for testing purposes."""
 
-    def get(self, indicators=None, data_elements=None, periods=None, org_units=None, include_cocs=False) -> list[dict]:  # noqa: ANN001
+    def get(
+        self,
+        indicators=None,
+        data_elements=None,
+        periods=None,
+        org_units=None,
+        include_cocs=False,
+    ) -> list[dict]:  # noqa: ANN001
         """Simulate the retrieval of analytics data from DHIS2 based on the provided parameters.
 
         Returns

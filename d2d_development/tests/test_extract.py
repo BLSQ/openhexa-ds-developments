@@ -9,9 +9,9 @@ from tests.mock_dhis2_get import MockDHIS2Client
 
 def test_extract_map_data_elements():
     """Test the mapping of data elements."""
-    result = DHIS2Extractor(dhis2_client=MockDHIS2Client()).data_elements._retrieve_data(
-        data_elements=[], org_units=[], period="202501"
-    )
+    result = DHIS2Extractor(
+        dhis2_client=MockDHIS2Client()
+    ).data_elements._retrieve_data(data_elements=[], org_units=[], period="202501")
     assert isinstance(result, pl.DataFrame)
     assert result.shape == (9, 9)
     assert result.columns == [
@@ -68,8 +68,14 @@ def test_extract_map_data_elements():
 
 def test_extract_map_reporting_rates():
     """Test the mapping of reporting rates."""
-    result = DHIS2Extractor(dhis2_client=MockDHIS2Client()).reporting_rates._retrieve_data(
-        reporting_rates=["AAA111.REPORTING_RATE", "BBB222.EXPECTED_REPORTS", "CCC333.REPORTING_RATE"],
+    result = DHIS2Extractor(
+        dhis2_client=MockDHIS2Client()
+    ).reporting_rates._retrieve_data(
+        reporting_rates=[
+            "AAA111.REPORTING_RATE",
+            "BBB222.EXPECTED_REPORTS",
+            "CCC333.REPORTING_RATE",
+        ],
         org_units=[],
         period="202409",
     )
@@ -92,7 +98,11 @@ def test_extract_map_reporting_rates():
     assert result["orgUnit"].to_list() == ["OU001", "OU002", "OU003"]
     assert result["categoryOptionCombo"].to_list() == [None, None, None]
     assert result["attributeOptionCombo"].to_list() == [None, None, None]
-    assert result["rateMetric"].to_list() == ["REPORTING_RATE", "EXPECTED_REPORTS", "REPORTING_RATE"]
+    assert result["rateMetric"].to_list() == [
+        "REPORTING_RATE",
+        "EXPECTED_REPORTS",
+        "REPORTING_RATE",
+    ]
     assert result["domainType"].to_list() == ["AGGREGATED", "AGGREGATED", "AGGREGATED"]
     assert result["value"].to_list() == ["100", "0", "100"]
 
@@ -100,7 +110,9 @@ def test_extract_map_reporting_rates():
 def test_extract_map_indicator():
     """Test the mapping of indicators."""
     result = DHIS2Extractor(dhis2_client=MockDHIS2Client()).indicators._retrieve_data(
-        indicators=["INDICATOR1", "INDICATOR2", "INDICATOR3"], org_units=[], period="202501"
+        indicators=["INDICATOR1", "INDICATOR2", "INDICATOR3"],
+        org_units=[],
+        period="202501",
     )
     assert isinstance(result, pl.DataFrame)
     assert result.shape == (3, 9)
@@ -128,12 +140,18 @@ def test_extract_map_indicator():
 
 def test_extract_download_replace_no_file(tmp_path):  # noqa: ANN001
     """Test DOWNLOAD_REPLACE mode, downloads and saves data to a Parquet file."""
-    extractor = DHIS2Extractor(dhis2_client=MockDHIS2Client(), download_mode="DOWNLOAD_REPLACE")
+    extractor = DHIS2Extractor(
+        dhis2_client=MockDHIS2Client(), download_mode="DOWNLOAD_REPLACE"
+    )
     filename = "test_extract_202501.parquet"
 
     # Call download_period
     result_path = extractor.data_elements.download_period(
-        data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+        data_elements=[],
+        org_units=[],
+        period="202501",
+        output_dir=tmp_path,
+        filename=filename,
     )
 
     # Assert file is created
@@ -143,14 +161,20 @@ def test_extract_download_replace_no_file(tmp_path):  # noqa: ANN001
 
 def test_download_replace_replaces_file_and_logs(tmp_path):  # noqa: ANN001
     """Test DOWNLOAD_REPLACE mode, replaces the file if it already exists and logs the replacement."""
-    extractor = DHIS2Extractor(dhis2_client=MockDHIS2Client(), download_mode="DOWNLOAD_REPLACE")
+    extractor = DHIS2Extractor(
+        dhis2_client=MockDHIS2Client(), download_mode="DOWNLOAD_REPLACE"
+    )
     output_dir = tmp_path
     period = "202501"
     filename = "test_extract.parquet"
 
     # First call creates the file
     file_path = extractor.data_elements.download_period(
-        data_elements=[], org_units=[], period=period, output_dir=output_dir, filename=filename
+        data_elements=[],
+        org_units=[],
+        period=period,
+        output_dir=output_dir,
+        filename=filename,
     )
     assert file_path.exists()
     mtime_before = file_path.stat().st_mtime
@@ -161,11 +185,18 @@ def test_download_replace_replaces_file_and_logs(tmp_path):  # noqa: ANN001
     with patch.object(extractor.logger, "info") as mock_log:
         # Second call should replace the file and log the replacement
         extractor.data_elements.download_period(
-            data_elements=[], org_units=[], period=period, output_dir=output_dir, filename=filename
+            data_elements=[],
+            org_units=[],
+            period=period,
+            output_dir=output_dir,
+            filename=filename,
         )
         mtime_after = file_path.stat().st_mtime
         # Check that the log message about replacing the extract was called
-        found = any("Replacing extract for period 202501" in str(call.args[0]) for call in mock_log.call_args_list)
+        found = any(
+            "Replacing extract for period 202501" in str(call.args[0])
+            for call in mock_log.call_args_list
+        )
         assert found, "Expected log message about replacing extract not found"
         # Check that the file was actually replaced (mtime changed)
         assert mtime_after > mtime_before, "File was not actually replaced"
@@ -173,12 +204,20 @@ def test_download_replace_replaces_file_and_logs(tmp_path):  # noqa: ANN001
 
 def test_extract_download_new_file_exists(tmp_path):  # noqa: ANN001
     """Test DOWNLOAD_NEW mode, creates a new file if it does not exist, and skips if it does."""
-    extractor = DHIS2Extractor(dhis2_client=MockDHIS2Client(), download_mode="DOWNLOAD_NEW", return_existing_file=True)
+    extractor = DHIS2Extractor(
+        dhis2_client=MockDHIS2Client(),
+        download_mode="DOWNLOAD_NEW",
+        return_existing_file=True,
+    )
     filename = "test_extract_202501.parquet"
 
     # First call: file is created
     result_new_path = extractor.data_elements.download_period(
-        data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+        data_elements=[],
+        org_units=[],
+        period="202501",
+        output_dir=tmp_path,
+        filename=filename,
     )
     assert result_new_path.exists()
     assert result_new_path.name == filename
@@ -186,11 +225,16 @@ def test_extract_download_new_file_exists(tmp_path):  # noqa: ANN001
     # Second call: should skip and log the skip message
     with patch.object(extractor.logger, "info") as mock_log:
         result_path = extractor.data_elements.download_period(
-            data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+            data_elements=[],
+            org_units=[],
+            period="202501",
+            output_dir=tmp_path,
+            filename=filename,
         )
         assert result_path == result_new_path
         found = any(
-            "Extract for period 202501 already exists, download skipped." in str(call.args[0])
+            "Extract for period 202501 already exists, download skipped."
+            in str(call.args[0])
             for call in mock_log.call_args_list
         )
         assert found, "Expected log message about skipping extract not found"
@@ -202,29 +246,49 @@ def test_extract_download_new_return_existing_file(tmp_path):  # noqa: ANN001
 
     # True: should return the file path if it exists
     extractor_true = DHIS2Extractor(
-        dhis2_client=MockDHIS2Client(), download_mode="DOWNLOAD_NEW", return_existing_file=True
+        dhis2_client=MockDHIS2Client(),
+        download_mode="DOWNLOAD_NEW",
+        return_existing_file=True,
     )
     # Create the file
     path_true = extractor_true.data_elements.download_period(
-        data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+        data_elements=[],
+        org_units=[],
+        period="202501",
+        output_dir=tmp_path,
+        filename=filename,
     )
     # Second call: should return the same file path
     result_true = extractor_true.data_elements.download_period(
-        data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+        data_elements=[],
+        org_units=[],
+        period="202501",
+        output_dir=tmp_path,
+        filename=filename,
     )
     assert result_true == path_true
 
     # False: should return None if the file exists
     extractor_false = DHIS2Extractor(
-        dhis2_client=MockDHIS2Client(), download_mode="DOWNLOAD_NEW", return_existing_file=False
+        dhis2_client=MockDHIS2Client(),
+        download_mode="DOWNLOAD_NEW",
+        return_existing_file=False,
     )
     # Create the file
     _ = extractor_false.data_elements.download_period(
-        data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+        data_elements=[],
+        org_units=[],
+        period="202501",
+        output_dir=tmp_path,
+        filename=filename,
     )
     # Second call: should return None
     result_false = extractor_false.data_elements.download_period(
-        data_elements=[], org_units=[], period="202501", output_dir=tmp_path, filename=filename
+        data_elements=[],
+        org_units=[],
+        period="202501",
+        output_dir=tmp_path,
+        filename=filename,
     )
     assert result_false is None
 
