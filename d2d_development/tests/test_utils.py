@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 import pandas as pd
 import polars as pl
 import pytest
+
 from d2d_development.exceptions import ExtractorError
 from d2d_development.utils import log_message, save_to_parquet
 

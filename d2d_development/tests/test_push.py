@@ -2,9 +2,9 @@ from unittest.mock import patch
 
 import polars as pl
 import pytest
+
 from d2d_development.extract import DHIS2Extractor
 from d2d_development.push import DHIS2Pusher, PusherError
-
 from tests.mock_dhis2_get import MockDHIS2Client
 from tests.mock_dhis2_post import (
     MOCK_DHIS2_ERROR_409_RESPONSE_AOC,

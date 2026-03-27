@@ -1,6 +1,6 @@
 import polars as pl
-from d2d_development.data_models import DataPointModel
 
+from d2d_development.data_models import DataPointModel
 from tests.mock_dhis2_get import MockDHIS2Client
 
 
