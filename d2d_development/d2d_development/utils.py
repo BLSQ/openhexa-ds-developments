@@ -6,6 +6,8 @@ import pandas as pd
 import polars as pl
 from openhexa.sdk import current_run
 
+from d2d_development.exceptions import ExtractorError
+
 
 def log_message(
     logger: logging.Logger,
@@ -86,4 +88,4 @@ def save_to_parquet(data: pl.DataFrame | pd.DataFrame, filename: Path) -> None:
         # Clean up the temp file if it exists
         if temp_filename is not None and temp_filename.exists():
             temp_filename.unlink()
-        raise Exception(f"Failed to save parquet file to {filename}") from e
+        raise ExtractorError(f"Failed to save parquet file to {filename}") from e
