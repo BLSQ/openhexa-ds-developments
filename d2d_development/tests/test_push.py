@@ -130,10 +130,39 @@ def test_push_log_invalid_data_points():
         for idx, call in enumerate(mock_log_message.call_args_list):
             if idx == 0:
                 log_message = call.args[0]
-                assert "4 data points will be  ignored" in log_message, f"Unexpected log message: {log_message}"
+                assert "4 data points will be ignored" in log_message, f"Unexpected log message: {log_message}"
             else:
                 log_message = call.args[0]
                 assert f"Data point ignored: dx=INVALID{idx}" in log_message, f"Unexpected log message: {log_message}"
+        # Extra check for number of ignored data points in summary
+        assert "ignored_data_points" in pusher.summary, "summary should contain 'ignored_data_points' key"
+        assert len(pusher.summary["ignored_data_points"]) == 4, "Expected 4 ignored data points in summary"
+
+
+def test_push_log_delete_data_points():
+    """Test the logging of invalid data points."""
+    data_points = (
+        DHIS2Extractor(dhis2_client=MockDHIS2Client())
+        .data_elements._retrieve_data(data_elements=[], org_units=[], period="202501")
+        .slice(3, 1)  # Select invalid data points (rows 4 to 7) for testing
+    )
+    print(data_points)
+    pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
+    _, to_delete, _ = pusher._classify_data_points(data_points)
+
+    with patch.object(pusher, "_log_message") as mock_log_message:
+        pusher._log_ignored_or_na(to_delete, is_na=True)
+        assert mock_log_message.call_count == 2, "Expected a log message for each invalid data point."
+        for idx, call in enumerate(mock_log_message.call_args_list):
+            if idx == 0:
+                log_message = call.args[0]
+                assert "1 data points will be set to NA" in log_message, f"Unexpected log message: {log_message}"
+            else:
+                log_message = call.args[0]
+                assert "Data point NA: dx=DELETE1" in log_message, f"Unexpected log message: {log_message}"
+        # Extra check for number of ignored data points in summary
+        assert "delete_data_points" in pusher.summary, "summary should contain 'delete_data_points' key"
+        assert len(pusher.summary["delete_data_points"]) == 1, "Expected 4 ignored data points in summary"
 
 
 def test_push_data_point():
@@ -176,9 +205,9 @@ def test_push_data_points_connection_error():
         with pytest.raises(PusherError, match=r"Server error: Service temporarily unavailable"):
             pusher._push_data_points([{"dummy_datapoint": "1"}])
         # After the exception, check the summary
-        assert len(pusher.summary["ERRORS"]) == 1
-        assert pusher.summary["ERRORS"][0]["message"] == "Server error: Service temporarily unavailable"
-        assert pusher.summary["ERRORS"][0]["server_error_code"] == "503"
+        assert len(pusher.summary["import_errors"]) == 1
+        assert pusher.summary["import_errors"][0]["message"] == "Server error: Service temporarily unavailable"
+        assert pusher.summary["import_errors"][0]["server_error_code"] == "503"
 
 
 def test_push_data_points_data_element_error():
@@ -225,9 +254,9 @@ def test_push_data_points_data_element_error():
         assert pusher.summary["import_counts"]["updated"] == 0
         assert pusher.summary["import_counts"]["ignored"] == 2
         assert pusher.summary["import_counts"]["deleted"] == 0
-        assert len(pusher.summary["ERRORS"]) == 2
-        assert pusher.summary["ERRORS"][0]["object"] == "INVALID_1"
-        assert pusher.summary["ERRORS"][1]["object"] == "INVALID_2"
+        assert len(pusher.summary["import_errors"]) == 2
+        assert pusher.summary["import_errors"][0]["object"] == "INVALID_1"
+        assert pusher.summary["import_errors"][1]["object"] == "INVALID_2"
 
 
 def test_push_data_points_org_unit_error():
@@ -274,9 +303,9 @@ def test_push_data_points_org_unit_error():
         assert pusher.summary["import_counts"]["updated"] == 0
         assert pusher.summary["import_counts"]["ignored"] == 2
         assert pusher.summary["import_counts"]["deleted"] == 0
-        assert len(pusher.summary["ERRORS"]) == 2
-        assert pusher.summary["ERRORS"][0]["object"] == "INVALID_1_OU"
-        assert pusher.summary["ERRORS"][1]["object"] == "INVALID_2_OU"
+        assert len(pusher.summary["import_errors"]) == 2
+        assert pusher.summary["import_errors"][0]["object"] == "INVALID_1_OU"
+        assert pusher.summary["import_errors"][1]["object"] == "INVALID_2_OU"
 
 
 def test_push_data_points_period_error():
@@ -323,9 +352,9 @@ def test_push_data_points_period_error():
         assert pusher.summary["import_counts"]["updated"] == 0
         assert pusher.summary["import_counts"]["ignored"] == 2
         assert pusher.summary["import_counts"]["deleted"] == 0
-        assert len(pusher.summary["ERRORS"]) == 2
-        assert pusher.summary["ERRORS"][0]["object"] == "INVALID_PERIOD_1"
-        assert pusher.summary["ERRORS"][1]["object"] == "INVALID_PERIOD_2"
+        assert len(pusher.summary["import_errors"]) == 2
+        assert pusher.summary["import_errors"][0]["object"] == "INVALID_PERIOD_1"
+        assert pusher.summary["import_errors"][1]["object"] == "INVALID_PERIOD_2"
 
 
 def test_push_data_points_coc_error():
@@ -372,9 +401,9 @@ def test_push_data_points_coc_error():
         assert pusher.summary["import_counts"]["updated"] == 0
         assert pusher.summary["import_counts"]["ignored"] == 2
         assert pusher.summary["import_counts"]["deleted"] == 0
-        assert len(pusher.summary["ERRORS"]) == 2
-        assert pusher.summary["ERRORS"][0]["object"] == "INVALID_COC_1"
-        assert pusher.summary["ERRORS"][1]["object"] == "INVALID_COC_2"
+        assert len(pusher.summary["import_errors"]) == 2
+        assert pusher.summary["import_errors"][0]["object"] == "INVALID_COC_1"
+        assert pusher.summary["import_errors"][1]["object"] == "INVALID_COC_2"
 
 
 def test_push_data_points_aoc_error():
@@ -421,9 +450,9 @@ def test_push_data_points_aoc_error():
         assert pusher.summary["import_counts"]["updated"] == 0
         assert pusher.summary["import_counts"]["ignored"] == 2
         assert pusher.summary["import_counts"]["deleted"] == 0
-        assert len(pusher.summary["ERRORS"]) == 2
-        assert pusher.summary["ERRORS"][0]["object"] == "INVALID_AOC_1"
-        assert pusher.summary["ERRORS"][1]["object"] == "INVALID_AOC_2"
+        assert len(pusher.summary["import_errors"]) == 2
+        assert pusher.summary["import_errors"][0]["object"] == "INVALID_AOC_1"
+        assert pusher.summary["import_errors"][1]["object"] == "INVALID_AOC_2"
 
 
 def test_push_data_points_value_format_error():
@@ -470,5 +499,5 @@ def test_push_data_points_value_format_error():
         assert pusher.summary["import_counts"]["updated"] == 0
         assert pusher.summary["import_counts"]["ignored"] == 1
         assert pusher.summary["import_counts"]["deleted"] == 0
-        assert len(pusher.summary["ERRORS"]) == 1
-        assert pusher.summary["ERRORS"][0]["object"] == "VALID2"
+        assert len(pusher.summary["import_errors"]) == 1
+        assert pusher.summary["import_errors"][0]["object"] == "VALID2"

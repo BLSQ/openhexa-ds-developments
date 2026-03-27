@@ -23,6 +23,7 @@ class DHIS2Pusher:
         logging_interval: int = 50000,
         logger: logging.Logger | None = None,
     ):
+        """Initialize the DHIS2Pusher."""
         self.dhis2_client = dhis2_client
 
         if import_strategy not in {"CREATE", "UPDATE", "CREATE_AND_UPDATE"}:
@@ -42,7 +43,19 @@ class DHIS2Pusher:
         self,
         df_data: pd.DataFrame | pl.DataFrame,
     ) -> None:
-        """Push formatted data to DHIS2."""
+        """Push formatted data to DHIS2.
+
+        Parameters
+        ----------
+        df_data : pd.DataFrame or pl.DataFrame
+            DataFrame containing the data points to be pushed. Must include the following columns:
+            'dx', 'period', 'orgUnit', 'categoryOptionCombo', 'attributeOptionCombo', and 'value'.
+
+        Raises
+        ------
+        PusherError
+            If the input data is not a DataFrame or if mandatory fields are missing.
+        """
         self._reset_summary()
         self._set_summary_import_options()
 
@@ -101,6 +114,7 @@ class DHIS2Pusher:
         return valid, to_delete, not_valid
 
     def _set_summary_import_options(self):
+        """Set the import options in the summary dictionary based on the current configuration."""
         self.summary["import_options"] = {
             "importStrategy": self.import_strategy,
             "dryRun": self.dry_run,
@@ -109,7 +123,13 @@ class DHIS2Pusher:
         }
 
     def _push_valid(self, data_points_valid: pl.DataFrame) -> None:
-        """Push valid values to DHIS2."""
+        """Push valid values to DHIS2.
+
+        Parameters
+        ----------
+        data_points_valid: pl.DataFrame
+            DataFrame containing valid data points to be pushed to DHIS2.
+        """
         if len(data_points_valid) == 0:
             self._log_message("No data to push.")
             return
@@ -119,6 +139,7 @@ class DHIS2Pusher:
         self._log_message(f"Data points push summary:  {self.summary['import_counts']}")
 
     def _push_to_delete(self, data_points_to_delete: pl.DataFrame) -> None:
+        """Push data points with NA values to DHIS2 to delete them."""
         if data_points_to_delete.height == 0:
             return
 
@@ -128,11 +149,19 @@ class DHIS2Pusher:
         self._log_message(f"Data points delete summary: {self.summary['import_counts']}")
 
     def _log_ignored_or_na(self, data_points: pl.DataFrame, is_na: bool = False):
-        """Logs ignored or NA data points."""
+        """Logs ignored or NA data points.
+
+        Parameters
+        ----------
+        data_points: pl.DataFrame
+            DataFrame containing the data points to be logged as ignored or NA.
+        is_na: bool
+            Flag whether the data points are NA (to be deleted) or ignored. Defaults to False (ignored).
+        """
         data_points_list = data_points.to_dicts()
         if len(data_points_list) > 0:
             self._log_message(
-                f"{len(data_points_list)} data points will be  {'set to NA' if is_na else 'ignored'}. "
+                f"{len(data_points_list)} data points will be {'set to NA' if is_na else 'ignored'}. "
                 "Please check the last execution report for details.",
                 level="warning",
             )
@@ -141,6 +170,9 @@ class DHIS2Pusher:
                 self._log_message(
                     f"{i}. Data point {'NA' if is_na else 'ignored'}: {row_str}", log_current_run=False, level="warning"
                 )
+                if is_na:
+                    self.summary["delete_data_points"].append(ignored)
+                self.summary["ignored_data_points"].append(ignored)
 
     def _log_message(self, message: str, level: str = "info", log_current_run: bool = True, error_details: str = ""):
         """Log a message using the configured logging function."""
@@ -174,7 +206,7 @@ class DHIS2Pusher:
 
     def _log_summary_errors(self):
         """Logs all the errors in the summary dictionary using the configured logging."""
-        errors = self.summary.get("ERRORS", [])
+        errors = self.summary.get("import_errors", [])
         if not errors:
             self._log_message("No errors found in the summary.")
         else:
@@ -204,7 +236,13 @@ class DHIS2Pusher:
         self,
         data_point_list: list[dict],
     ) -> None:
-        """dry_run: Set to true to get an import summary without actually importing data (DHIS2)."""
+        """Push data points to DHIS2 in chunks, handling responses and logging progress.
+
+        Parameters
+        ----------
+        data_point_list: list[dict]
+            A list of dictionaries, each representing a data point formatted for DHIS2.
+        """
         total_data_points = len(data_point_list)
         processed_points = 0
         last_logged_at = 0
@@ -230,7 +268,7 @@ class DHIS2Pusher:
                     self._update_import_counts(response)
                 else:
                     # No response JSON, at least log the request error msg
-                    self.summary["ERRORS"].extend(
+                    self.summary["import_errors"].extend(
                         [{"chunk": chunk_id, "period": chunk[0].get("period", "-"), "exception": str(e)}]
                     )
                 self._extract_conflicts(response)
@@ -265,14 +303,17 @@ class DHIS2Pusher:
                 "server_error_code": f"{r.status_code}",
                 "message": f"Server error: {message}",
             }
-            self.summary["ERRORS"].append(error_info)
+            self.summary["import_errors"].append(error_info)
             raise PusherError(f"Server error: {message}") from None
 
     def _reset_summary(self) -> None:
+        """Reset the summary dictionary to its initial state before starting a new push operation."""
         self.summary = {
             "import_counts": {"imported": 0, "updated": 0, "ignored": 0, "deleted": 0},
             "import_options": {},
-            "ERRORS": [],
+            "import_errors": [],
+            "ignored_data_points": [],
+            "delete_data_points": [],
         }
 
     def _split_list(self, src_list: list, length: int):
@@ -285,6 +326,11 @@ class DHIS2Pusher:
             yield src_list[i : i + length]
 
     def _safe_json(self, r: requests.Response) -> dict | None:
+        """Safely parse the JSON response from a requests.Response object.
+
+        Returns:
+            dict: The parsed JSON response if successful, or None if parsing fails or if the response is None.
+        """
         if r is None:
             return None
 
@@ -294,6 +340,7 @@ class DHIS2Pusher:
             return None
 
     def _update_import_counts(self, response: dict) -> None:
+        """Update the import counts in the summary dictionary based on the response from DHIS2."""
         if not response:
             return
         if "importCount" in response:
@@ -327,4 +374,4 @@ class DHIS2Pusher:
         all_errors = conflicts + error_reports
 
         if all_errors:
-            self.summary.setdefault("ERRORS", []).extend(all_errors)
+            self.summary.setdefault("import_errors", []).extend(all_errors)
