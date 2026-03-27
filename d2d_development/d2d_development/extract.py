@@ -8,11 +8,6 @@ from .data_models import DataType
 from .exceptions import ExtractorError
 from .utils import log_message, save_to_parquet
 
-# TODO:
-# 1) Refactor the extractors to (Following DHIS2 client endpoints):
-# -DataValueSetsExtractor (DE)
-# -AnalyticsExtractor (DE, indicators, ReportingRates)
-
 
 class DataElementsExtractor:
     """Handles downloading and formatting of data elements from DHIS2."""
@@ -74,6 +69,23 @@ class DataElementsExtractor:
             raise ExtractorError(f"Extract data elements download error : {e}") from e
 
     def _retrieve_data(self, data_elements: list[str], org_units: list[str], period: str, **kwargs) -> pl.DataFrame:  # noqa: ANN003
+        """Retrieve data from DHIS2 for the specified data elements, organization units, and period.
+
+        Parameters
+        ----------
+        data_elements : list[str]
+            List of DHIS2 data element UIDs to extract.
+        org_units : list[str]
+            List of DHIS2 organization unit UIDs to extract data for.
+        period : str
+            DHIS2 period (valid format) to extract data for.
+        kwargs : dict
+            Additional keyword arguments for data retrieval, only `last_updated` available but not impemented yet.
+
+        Returns
+        -------
+        pl.DataFrame A DataFrame containing the retrieved data, formatted according to DHIS2 naming standards.
+        """
         if not self.extractor._valid_dhis2_period_format(period):
             raise ExtractorError(f"Invalid DHIS2 period format: {period}")
         last_updated = kwargs.get("last_updated")
@@ -96,6 +108,7 @@ class IndicatorsExtractor:
     """Handles downloading and formatting of indicators from DHIS2."""
 
     def __init__(self, extractor: "DHIS2Extractor"):
+        """Initialize the IndicatorsExtractor with a reference to the main DHIS2Extractor."""
         self.extractor = extractor
 
     def download_period(
@@ -155,6 +168,24 @@ class IndicatorsExtractor:
             raise ExtractorError(f"Extract indicators download error : {e}") from e
 
     def _retrieve_data(self, indicators: list[str], org_units: list[str], period: str, **kwargs) -> pl.DataFrame:  # noqa: ANN003
+        """Retrieve data from DHIS2 for the specified indicators, organization units, and period.
+
+        Parameters
+        ----------
+        indicators : list[str]
+            List of DHIS2 indicator UIDs to extract.
+        org_units : list[str]
+            List of DHIS2 organization unit UIDs to extract data for.
+        period : str
+            DHIS2 period (valid format) to extract data for.
+        kwargs : dict
+            Additional keyword arguments for data retrieval, only `include_cocs` currently implemented
+             to include category option combo mapping for data element ids passed to the DHIS2 client.
+
+        Returns
+        -------
+        pl.DataFrame A DataFrame containing the retrieved data, formatted according to DHIS2 naming standards.
+        """
         if not self.extractor._valid_dhis2_period_format(period):
             raise ExtractorError(f"Invalid DHIS2 period format: {period}")
 
@@ -184,6 +215,7 @@ class ReportingRatesExtractor:
     """Handles downloading and formatting of reporting rates from DHIS2."""
 
     def __init__(self, extractor: "DHIS2Extractor"):
+        """Initialize the ReportingRatesExtractor with a reference to the main DHIS2Extractor."""
         self.extractor = extractor
 
     def download_period(
@@ -240,6 +272,23 @@ class ReportingRatesExtractor:
             raise ExtractorError(f"Extract reporting rates download error : {e}") from e
 
     def _retrieve_data(self, reporting_rates: list[str], org_units: list[str], period: str, **kwargs) -> pl.DataFrame:  # noqa: ANN003
+        """Retrieve data from DHIS2 for the specified reporting rates, organization units, and period.
+
+        Parameters
+        ----------
+        reporting_rates : list[str]
+            List of DHIS2 reporting rate UIDs to extract.
+        org_units : list[str]
+            List of DHIS2 organization unit UIDs to extract data for.
+        period : str
+            DHIS2 period (valid format) to extract data for.
+        kwargs : dict
+            Additional keyword arguments for data retrieval (not impemented).
+
+        Returns
+        -------
+        pl.DataFrame A DataFrame containing the retrieved data, formatted according to DHIS2 naming standards.
+        """
         if not self.extractor._valid_dhis2_period_format(period):
             raise ExtractorError(f"Invalid DHIS2 period format: {period}")
 
@@ -295,6 +344,7 @@ class DHIS2Extractor:
         return_existing_file: bool = False,
         logger: logging.Logger | None = None,
     ):
+        """Initialize the DHIS2Extractor with the given DHIS2 client and configuration."""
         self.dhis2_client = dhis2_client
         if download_mode not in {"DOWNLOAD_REPLACE", "DOWNLOAD_NEW"}:
             raise ExtractorError("Invalid 'download_mode', use 'DOWNLOAD_REPLACE' or 'DOWNLOAD_NEW'.")
@@ -317,6 +367,32 @@ class DHIS2Extractor:
         filename: str | None = None,
         **kwargs,  # noqa: ANN003
     ) -> Path | None:
+        """Handles the extract process for a given period, including data retrieval, file saving, and logging.
+
+        Parameters
+        ----------
+        handler : DataElementsExtractor | IndicatorsExtractor | ReportingRatesExtractor
+            The specific handler to use for data retrieval.
+        data_products : list[str]
+            List of data product UIDs to extract (e.g., data elements, indicators, or reporting rates).
+        org_units : list[str]
+            List of DHIS2 organization unit UIDs to extract data for.
+        period : str
+            DHIS2 period (valid format) to extract data for.
+        output_dir : Path
+            Directory where extracted data files will be saved.
+        filename : str | None
+            Optional filename for the extracted data file. If None, a default name will be used.
+        kwargs : dict
+            Additional keyword arguments for data retrieval, such as `last_updated` for filtering data.
+
+        Returns
+        -------
+        Path | None
+            The path to the extracted data file, or None if no data was extracted or if
+            the file already exists and `return_existing_file` is False.
+
+        """
         output_dir.mkdir(parents=True, exist_ok=True)
         if filename:
             extract_fname = output_dir / filename
