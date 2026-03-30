@@ -259,7 +259,7 @@ class DHIS2Pusher:
                     self._update_import_counts(response)
 
                 # Capture conflicts/errorReports if present
-                self._extract_conflicts(response)
+                self._extract_conflicts(response, chunk)
 
             except requests.exceptions.RequestException as e:
                 self._raise_server_errors(r)  # Stop the process if there's a server error
@@ -271,7 +271,7 @@ class DHIS2Pusher:
                     self.summary["import_errors"].extend(
                         [{"chunk": chunk_id, "period": chunk[0].get("period", "-"), "exception": str(e)}]
                     )
-                self._extract_conflicts(response)
+                self._extract_conflicts(response, chunk)
 
             processed_points += len(chunk)
 
@@ -312,6 +312,7 @@ class DHIS2Pusher:
             "import_counts": {"imported": 0, "updated": 0, "ignored": 0, "deleted": 0},
             "import_options": {},
             "import_errors": [],
+            "rejected_datapoints": [],
             "ignored_data_points": [],
             "delete_data_points": [],
         }
@@ -352,26 +353,40 @@ class DHIS2Pusher:
         for key in ["imported", "updated", "ignored", "deleted"]:
             self.summary["import_counts"][key] += import_counts.get(key, 0)
 
-    def _extract_conflicts(self, response: dict) -> None:
+    def _extract_conflicts(self, response: dict, chunk: list) -> None:
         """Extract all conflicts and errorReports from a DHIS2 API response.
 
-        Handles both top-level and nested 'response' nodes. Optionally updates the summary.
+        This method looks for 'conflicts' and 'errorReports' at both the top level and within a nested
+        'response' object. It also extracts 'rejectedIndexes' from the nested 'response' to identify which data
+        points were rejected by DHIS2, and adds them to the summary under 'rejected_datapoints'.
 
         Parameters
         ----------
-        response : dict
-            The JSON response from DHIS2 after an import.
+        response: dict
+            The JSON response from the DHIS2 API after attempting to push data points.
+        chunk: list
+            The list of data points that were included in the API request corresponding to the response.
         """
         if not response:
             return
+
         conflicts = response.get("conflicts", [])
         error_reports = response.get("errorReports", [])
 
-        # Check if nested under "response"
         nested = response.get("response", {})
         conflicts += nested.get("conflicts", [])
         error_reports += nested.get("errorReports", [])
+        rejected_indexes = nested.get("rejectedIndexes", [])
+
         all_errors = conflicts + error_reports
 
         if all_errors:
             self.summary.setdefault("import_errors", []).extend(all_errors)
+
+        # Extract rejected datapoints
+        if rejected_indexes:
+            rejected_datapoints = [
+                {"index": idx, "datapoint": chunk[idx]} for idx in rejected_indexes if 0 <= idx < len(chunk)
+            ]
+            if rejected_datapoints:
+                self.summary.setdefault("rejected_datapoints", []).extend(rejected_datapoints)

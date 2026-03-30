@@ -146,7 +146,6 @@ def test_push_log_delete_data_points():
         .data_elements._retrieve_data(data_elements=[], org_units=[], period="202501")
         .slice(3, 1)  # Select invalid data points (rows 4 to 7) for testing
     )
-    print(data_points)
     pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
     _, to_delete, _ = pusher._classify_data_points(data_points)
 
@@ -501,3 +500,48 @@ def test_push_data_points_value_format_error():
         assert pusher.summary["import_counts"]["deleted"] == 0
         assert len(pusher.summary["import_errors"]) == 1
         assert pusher.summary["import_errors"][0]["object"] == "VALID2"
+
+
+def test_push_summary_rejected_points():
+    """Test that rejected data points are correctly tracked in the summary."""
+    pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
+    # NOTE: This fake input is just to pass validation and
+    #  match the information manufactured in the response
+    invalid_dp_1 = {
+        "dataElement": "VALID2",
+        "period": "202501",
+        "orgUnit": "ORG002",
+        "categoryOptionCombo": "INVALID_AOC_1",
+        "attributeOptionCombo": "ATTR001",
+        "value": "1",
+    }
+    invalid_dp_2 = {
+        "dataElement": "VALID3",
+        "period": "202501",
+        "orgUnit": "ORG003",
+        "categoryOptionCombo": "INVALID_AOC_2",
+        "attributeOptionCombo": "ATTR001",
+        "value": "1",
+    }
+    invalid_data_points = [
+        {
+            "dataElement": "VALID1",
+            "period": "202501",
+            "orgUnit": "ORG001",
+            "categoryOptionCombo": "CAT001",
+            "attributeOptionCombo": "ATTR001",
+            "value": "1",
+        },
+        invalid_dp_1,
+        invalid_dp_2,
+    ]
+
+    # MOCK_DHIS2_ERROR_409_RESPONSE_AOC was manually manufactured to simulate a Conflict from DHIS2.
+    with patch.object(
+        pusher.dhis2_client.api.session,
+        "post",
+        return_value=MockDHIS2Response(MOCK_DHIS2_ERROR_409_RESPONSE_AOC, status_code=409),
+    ):
+        pusher._push_data_points(invalid_data_points)  # access private method for error handling testing
+        assert pusher.summary["rejected_datapoints"][0]["datapoint"] == invalid_dp_1
+        assert pusher.summary["rejected_datapoints"][1]["datapoint"] == invalid_dp_2

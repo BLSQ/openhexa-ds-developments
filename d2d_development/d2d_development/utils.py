@@ -6,7 +6,7 @@ import pandas as pd
 import polars as pl
 from openhexa.sdk import current_run
 
-from d2d_development.exceptions import ExtractorError
+from .exceptions import ExtractorError
 
 
 def log_message(
