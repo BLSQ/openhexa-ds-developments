@@ -230,12 +230,12 @@ match_level_group_df_matches_all_level1 = pl.DataFrame(
 )
 
 
-match_level_group_unmatched_ref_when_tshuapa_matched = reference_pyramid.filter(
-    pl.col("level_1_name") != "TSHUAPA"
+match_level_group_unmatched_ref_when_tshuapa_matched = (
+    reference_pyramid_one_level.filter(pl.col("level_1_name") != "TSHUAPA")
 )
 
-match_level_group_unmatched_can_when_tshuapa_matched = candidate_pyramid.filter(
-    pl.col("level_1_name") != "TSHUAPA"
+match_level_group_unmatched_can_when_tshuapa_matched = (
+    candidate_pyramid_one_level.filter(pl.col("level_1_name") != "TSHUAPA")
 )
 
 match_results_level1 = {

@@ -1054,17 +1054,15 @@ def test_add_already_matched_levels_adds_multiple_levels_columns(
 #
 # 2. Rows whose names appear in the matched result are excluded from the unmatched DataFrames.
 #    → only TSHUAPA is matched; HAUT LOMAMI rows appear in both unmatched outputs.
-#    Note: unmatched data is always drawn from self.reference_pyramid / self.candidate_pyramid
-#    (the full stored pyramids), not from the sub-groups passed in.
+#    Unmatched data is filtered from the passed-in groups (reference_group / candidate_group).
 #    → test_match_level_group_unmatched_excludes_matched_names
 #
 # 3. When no candidates match, df_matches is empty but retains the expected column schema. →
 #    → test_match_level_group_empty_df_matches_has_correct_schema
 #
-# 4. When no candidates match, both unmatched DataFrames equal the full stored pyramids. →
-#    unmatched is filtered from self.*_pyramid, so passing one-level groups as input does
-#    not affect the unmatched result.
-#    → test_match_level_group_unmatched_is_full_pyramids_when_no_match
+# 4. When no candidates match, both unmatched DataFrames equal the passed-in groups. →
+#    unmatched is filtered from the passed-in groups, so only the group rows are returned.
+#    → test_match_level_group_unmatched_equals_input_groups_when_no_match
 
 
 def test_match_level_group_df_matches_correct_when_all_matched(
@@ -1125,11 +1123,15 @@ def test_match_level_group_unmatched_excludes_matched_names(
                 matching_col_suffix="_name",
             )
         )
+    print(df_unmatched_ref)
+    print(test_config.match_level_group_unmatched_ref_when_tshuapa_matched)
     assert_frame_equal(
         df_unmatched_ref,
         test_config.match_level_group_unmatched_ref_when_tshuapa_matched,
         check_row_order=False,
     )
+    print(df_unmatched_can)
+    print(test_config.match_level_group_unmatched_can_when_tshuapa_matched)
     assert_frame_equal(
         df_unmatched_can,
         test_config.match_level_group_unmatched_can_when_tshuapa_matched,
@@ -1156,10 +1158,10 @@ def test_match_level_group_empty_df_matches_has_correct_schema(
     assert df_matches.columns == test_config.match_level_group_schema_level1
 
 
-def test_match_level_group_unmatched_is_full_pyramids_when_no_match(
+def test_match_level_group_unmatched_equals_input_groups_when_no_match(
     pyramid_matcher_loaded: PyramidMatcher,
 ):
-    """When no candidates match, both unmatched DataFrames equal the full pyramids."""
+    """When no candidates match, both unmatched DataFrames equal the passed-in groups."""
     with patch.object(
         pyramid_matcher_loaded.matcher, "get_similarity", return_value=None
     ):
@@ -1174,10 +1176,10 @@ def test_match_level_group_unmatched_is_full_pyramids_when_no_match(
             )
         )
     assert_frame_equal(
-        df_unmatched_ref, test_config.reference_pyramid, check_row_order=False
+        df_unmatched_ref, test_config.reference_pyramid_one_level, check_row_order=False
     )
     assert_frame_equal(
-        df_unmatched_can, test_config.candidate_pyramid, check_row_order=False
+        df_unmatched_can, test_config.candidate_pyramid_one_level, check_row_order=False
     )
 
 

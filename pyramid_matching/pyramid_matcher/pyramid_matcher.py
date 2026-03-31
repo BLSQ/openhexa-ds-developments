@@ -109,11 +109,14 @@ class PyramidMatcher:
 
         if self._is_valid(reference_pyramid):
             self.reference_pyramid = reference_pyramid.unique()
-            # NOTE: maybe Log some details of the pyramid, # of rows, levels detected, etc
+            self._log(
+                f"Reference pyramid loaded with {len(self.reference_pyramid)} unique rows."
+            )
         else:
             raise ValueError(
                 "Invalid reference pyramid format. "
-                "Please provide a DataFrame with the required columns."
+                "Please provide a DataFrame with at least one column starting with 'level_'"
+                " and ending with the matching column suffix (e.g., '_name')."
             )
 
     def _set_candidate_pyramid(self, candidate_pyramid: pl.DataFrame | pd.DataFrame):
@@ -129,17 +132,18 @@ class PyramidMatcher:
 
         if self._is_valid(candidate_pyramid):
             self.candidate_pyramid = candidate_pyramid.unique()
-            # NOTE: maybe Log some details of the pyramid, # of rows, levels detected, etc
+            self._log(
+                f"Candidate pyramid loaded with {len(self.candidate_pyramid)} unique rows."
+            )
         else:
             raise ValueError(
                 "Invalid candidate pyramid format. "
-                "Please provide a DataFrame with the required columns."
+                "Please provide a DataFrame with at least one column starting with 'level_'"
+                " and ending with the matching column suffix (e.g., '_name')."
             )
 
     def _is_valid(self, pyramid: pl.DataFrame) -> bool:
         """Check if the pyramid has the required columns.
-
-        NOTE: Let's think about what are the required columns or format for a valid pyramid.
 
         Returns:
             bool: True if the pyramid has all required columns, False otherwise.
@@ -185,6 +189,7 @@ class PyramidMatcher:
         else:
             self._check_levels(levels_to_match, matching_col_suffix)
             levels_to_match.sort()
+            self._log(f"Using provided levels to match: {levels_to_match}")
 
         attributes = self._get_attributes(levels_to_match, matching_col_suffix)
 
@@ -507,7 +512,7 @@ class PyramidMatcher:
             .unique()
             .to_list()
         )
-        df_unmatched_candidate = self.candidate_pyramid.filter(
+        df_unmatched_candidate = candidate_group.filter(
             ~pl.col(col_name).is_in(matched_data_names)
         )
 
@@ -516,7 +521,7 @@ class PyramidMatcher:
             .unique()
             .to_list()
         )
-        df_unmatched_reference = self.reference_pyramid.filter(
+        df_unmatched_reference = reference_group.filter(
             ~pl.col(col_name).is_in(matched_pyramid_names)
         )
 
