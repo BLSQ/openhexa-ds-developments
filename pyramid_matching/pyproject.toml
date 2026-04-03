@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyramid-matching"
-version = "0.0.0"
+version = "0.1.0"
 description = "OpenHEXA pyramid matching development utility library maintained by Bluesquare Data Services team."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,11 +13,12 @@ dependencies = [
     "rapidfuzz>=3.0.0",
     "shapely>=2.0.0",
     "polars>=1.0.0",
+    "pandas>=2.3.1",
 ]
 
 [project.optional-dependencies]
 # These we only need to install when running the test, not when installing the package
-dev = ["pytest", "pytest-cov"]
+dev = ["pytest", "pytest-cov", "pyarrow"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

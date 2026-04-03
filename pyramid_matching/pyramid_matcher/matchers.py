@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, TypeAlias
+from typing import Generic, TypeAlias, TypeVar
 
 from rapidfuzz import fuzz, process
 from shapely.geometry.base import BaseGeometry
@@ -11,6 +11,8 @@ from shapely.geometry.base import BaseGeometry
 
 CandidateAttributes: TypeAlias = list[str]
 
+K = TypeVar("K", str, BaseGeometry)
+
 
 @dataclass(frozen=True)
 class MatchResult:
@@ -18,22 +20,24 @@ class MatchResult:
 
     query: str
     matched: str
-    attributes: dict[str, Any]
+    attributes: CandidateAttributes
     score: float
 
 
-class BaseMatcher(ABC):
+class BaseMatcher(ABC, Generic[K]):
     """Abstract base class for matchers that compute similarity scores."""
 
     @abstractmethod
     def get_similarity(
-        self, query: str | BaseGeometry, candidates: dict[str | BaseGeometry, CandidateAttributes]
+        self,
+        query: K,
+        candidates: dict[K, CandidateAttributes],
     ) -> MatchResult | None:
         """Return similarity scores for the candidates."""
         pass
 
 
-class FuzzyMatcher(BaseMatcher):
+class FuzzyMatcher(BaseMatcher[str]):
     """Matcher that uses fuzzy string matching to compute similarity scores."""
 
     def __init__(self, threshold: float = 80, scorer_name: str = "wratio"):
@@ -86,7 +90,9 @@ class FuzzyMatcher(BaseMatcher):
             if no match meets the threshold.
         """
         candidate_strings = list(candidates.keys())
-        best_match = self.process.extractOne(query, candidate_strings, scorer=self.scorer)
+        best_match = self.process.extractOne(
+            query, candidate_strings, scorer=self.scorer
+        )
 
         if best_match is None:
             return None
@@ -108,13 +114,15 @@ class FuzzyMatcher(BaseMatcher):
         return f"FuzzyMatcher(scorer: {self.scorer.__name__})"
 
 
-class SentenceTransformerMatcher(BaseMatcher):
+class SentenceTransformerMatcher(BaseMatcher[str]):
     """Matcher that uses sentence transformers to compute similarity scores.
 
     NOTE: Not yet implemented.
     """
 
-    def __init__(self, model_name: str | None = "sentence-transformers/all-MiniLM-L6-v2"):
+    def __init__(
+        self, model_name: str | None = "sentence-transformers/all-MiniLM-L6-v2"
+    ):
         from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 
         model_name = "sentence-transformers/all-MiniLM-L6-v2"
@@ -128,13 +136,15 @@ class SentenceTransformerMatcher(BaseMatcher):
         # cand_embs = self.model.encode(candidates, convert_to_tensor=True)
         # scores = cos_sim(query_emb, cand_embs)[0].cpu().numpy()
         """Return similarity scores for the candidates using sentence transformers."""
-        raise NotImplementedError("SentenceTransformerMatcher.get_similarity is not implemented.")
+        raise NotImplementedError(
+            "SentenceTransformerMatcher.get_similarity is not implemented."
+        )
 
     def __str__(self) -> str:
         return f"TransformerMatcher(scorer: {self.model.__name__})"
 
 
-class GeometryMatcher(BaseMatcher):
+class GeometryMatcher(BaseMatcher[BaseGeometry]):
     """Match org units using spatial proximity and overlap.
 
     NOTE: Not yet implemented. This is a test implementation.
@@ -198,14 +208,20 @@ class GeometryMatcher(BaseMatcher):
         distance_score = 1.0 - (distance / self.max_distance)
 
         overlap_score = 0.0
-        if self.use_overlap and ref.geom_type == "Polygon" and cand.geom_type == "Polygon":
+        if (
+            self.use_overlap
+            and ref.geom_type == "Polygon"
+            and cand.geom_type == "Polygon"
+        ):
             inter = ref.intersection(cand).area
             union = ref.union(cand).area
             if union > 0:
                 overlap_score = inter / union
 
         # Final weighted score
-        return (1 - self.overlap_weight) * distance_score + self.overlap_weight * overlap_score
+        return (
+            1 - self.overlap_weight
+        ) * distance_score + self.overlap_weight * overlap_score
 
     def _geom_id(self, geom: BaseGeometry) -> str:
         """Return an identifier for the query geometry.

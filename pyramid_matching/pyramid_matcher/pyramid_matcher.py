@@ -1,27 +1,10 @@
 import logging
 
+import pandas as pd
 import polars as pl
 from openhexa.sdk import current_run
 
 from .matchers import BaseMatcher, FuzzyMatcher
-
-
-def create_default_logger(name: str) -> logging.Logger:
-    """Create a default logger that prints to the console.
-
-    Returns:
-        logging.Logger: A logger instance that prints to the console.
-    """
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
-
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-
-    return logger
 
 
 class PyramidMatcher:
@@ -31,19 +14,19 @@ class PyramidMatcher:
 
     Attributes
     ----------
-    reference_pyramid : pl.DataFrame | None
+    reference_pyramid : pl.DataFrame
         The reference pyramid DataFrame.
-    candidate_pyramid : pl.DataFrame | None
+    candidate_pyramid : pl.DataFrame
         The candidate pyramid DataFrame.
-    matcher : Matcher | None
+    matcher : BaseMatcher
         The matcher instance used for matching.
     required_columns : set
         The set of required columns for the pyramid DataFrames.
-    prefix_input_data : str
-        Prefix for input data columns.
-    prefix_target_data : str
-        Prefix for target data columns.
-    logger : object
+    prefix_candidate_data : str, default "candidate_"
+        Prefix for candidate data columns.
+    prefix_reference_data : str, default "reference_"
+        Prefix for reference data columns.
+    logger : logging.Logger
         Logger for logging messages.
 
     Methods
@@ -56,57 +39,124 @@ class PyramidMatcher:
     Perform hierarchical matching between the reference and candidate pyramids.
     """
 
-    def __init__(self, matcher: BaseMatcher | None = None, logger: logging.Logger | None = None):
-        self.reference_pyramid: pl.DataFrame | None = None
-        self.candidate_pyramid: pl.DataFrame | None = None
-        self.matcher = matcher
-        self.prefix_input_data: str = "input_"
-        self.prefix_target_data: str = "target_"
-        self.logger = logger or create_default_logger(self.__class__.__name__)
+    def __init__(
+        self, matcher: BaseMatcher | None = None, logger: logging.Logger | None = None
+    ):
+        self._init_logger(logger)
+        self.reference_pyramid: pl.DataFrame = pl.DataFrame()
+        self.candidate_pyramid: pl.DataFrame = pl.DataFrame()
+        self._init_matcher(matcher)
+        self.prefix_candidate_data: str = "candidate_"
+        self.prefix_reference_data: str = "reference_"
 
-    def _set_reference_pyramid(self, reference_pyramid: pl.DataFrame):
+    def _init_logger(self, logger: logging.Logger | None) -> None:
+        """Define the logger to use for logging messages.
+
+        If no logger is provided, a default logger will be created.
+
+        Parameters
+        ----------
+        logger : logging.Logger | None
+            The logger instance to use. If None, a default logger will be created.
+        """
+        if logger is None:
+            if "current_run" in globals():
+                self.logger = None  # we will use the logger from the current run
+            else:
+                self.logger = logging.getLogger(self.__class__.__name__)
+                self.logger.setLevel(logging.INFO)
+
+                if not self.logger.handlers:
+                    handler = logging.StreamHandler()
+                    formatter = logging.Formatter(
+                        "%(asctime)s | %(levelname)s | %(message)s"
+                    )
+                    handler.setFormatter(formatter)
+                    self.logger.addHandler(handler)
+
+        else:
+            self.logger = logger
+
+    def _init_matcher(self, matcher: BaseMatcher | None) -> None:
+        """Set the matcher to use for matching.
+
+        If no matcher is provided, a default FuzzyMatcher will be used.
+
+        Parameters
+        ----------
+        matcher : BaseMatcher | None
+            The matcher instance to use. If None, a default FuzzyMatcher will be used.
+        """
+        if matcher is None:
+            self.matcher = FuzzyMatcher()
+            self._log(
+                "No matcher provided. Using FuzzyMatcher with threshold 80 and scorer WRatio."
+            )
+        else:
+            self.matcher = matcher
+            self._log(f"Using provided matcher: {matcher!s}")
+
+    def _set_reference_pyramid(self, reference_pyramid: pl.DataFrame | pd.DataFrame):
         """Load the reference pyramid."""
         if not isinstance(reference_pyramid, pl.DataFrame):
-            reference_pyramid = pl.DataFrame(reference_pyramid)
+            try:
+                reference_pyramid = pl.DataFrame(reference_pyramid)
+            except Exception as e:
+                raise ValueError(
+                    "Could not convert reference_pyramid to Polars DataFrame. "
+                    "Please provide a valid DataFrame or a format that can be converted."
+                ) from e
 
         if self._is_valid(reference_pyramid):
             self.reference_pyramid = reference_pyramid.unique()
-            # NOTE: maybe Log some details of the pyramid, # of rows, levels detected, etc
+            self._log(
+                f"Reference pyramid loaded with {len(self.reference_pyramid)} unique rows."
+            )
         else:
             raise ValueError(
                 "Invalid reference pyramid format. "
-                "Please provide a DataFrame with the required columns."
+                "Please provide a DataFrame with at least one column starting with 'level_'"
+                " and ending with the matching column suffix (e.g., '_name')."
             )
 
-    def _set_candidate_pyramid(self, candidate_pyramid: pl.DataFrame):
+    def _set_candidate_pyramid(self, candidate_pyramid: pl.DataFrame | pd.DataFrame):
         """Load the candidate pyramid."""
         if not isinstance(candidate_pyramid, pl.DataFrame):
-            candidate_pyramid = pl.DataFrame(candidate_pyramid)
+            try:
+                candidate_pyramid = pl.DataFrame(candidate_pyramid)
+            except Exception as e:
+                raise ValueError(
+                    "Could not convert candidate_pyramid to Polars DataFrame. "
+                    "Please provide a valid DataFrame or a format that can be converted."
+                ) from e
 
         if self._is_valid(candidate_pyramid):
             self.candidate_pyramid = candidate_pyramid.unique()
-            # NOTE: maybe Log some details of the pyramid, # of rows, levels detected, etc
+            self._log(
+                f"Candidate pyramid loaded with {len(self.candidate_pyramid)} unique rows."
+            )
         else:
             raise ValueError(
                 "Invalid candidate pyramid format. "
-                "Please provide a DataFrame with the required columns."
+                "Please provide a DataFrame with at least one column starting with 'level_'"
+                " and ending with the matching column suffix (e.g., '_name')."
             )
 
     def _is_valid(self, pyramid: pl.DataFrame) -> bool:
         """Check if the pyramid has the required columns.
 
-        NOTE: Let's think about what are the required columns or format for a valid pyramid.
-
         Returns:
             bool: True if the pyramid has all required columns, False otherwise.
         """
-        level_cols_available = [c for c in pyramid.columns if c.startswith("level_")]  # any col?
+        level_cols_available = [
+            c for c in pyramid.columns if c.startswith("level_")
+        ]  # any col?
         return bool(level_cols_available)
 
     def run_matching(
         self,
-        reference_pyramid: pl.DataFrame,
-        candidate_pyramid: pl.DataFrame,
+        reference_pyramid: pl.DataFrame | pd.DataFrame,
+        candidate_pyramid: pl.DataFrame | pd.DataFrame,
         levels_to_match: list | None = None,
         matching_col_suffix: str = "_name",
     ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
@@ -127,7 +177,9 @@ class PyramidMatcher:
             and unmatched pyramid entries.
         """
         if reference_pyramid is None or candidate_pyramid is None:
-            raise ValueError("Both reference_pyramid and candidate_pyramid must be provided.")
+            raise ValueError(
+                "Both reference_pyramid and candidate_pyramid must be provided."
+            )
         self._set_reference_pyramid(reference_pyramid)
         self._set_candidate_pyramid(candidate_pyramid)
 
@@ -137,6 +189,7 @@ class PyramidMatcher:
         else:
             self._check_levels(levels_to_match, matching_col_suffix)
             levels_to_match.sort()
+            self._log(f"Using provided levels to match: {levels_to_match}")
 
         attributes = self._get_attributes(levels_to_match, matching_col_suffix)
 
@@ -145,31 +198,29 @@ class PyramidMatcher:
         list_candidate_not_matched = []
         data_matched = pl.DataFrame()
 
-        if self.matcher is None:
-            self.matcher = FuzzyMatcher(matcher_type="fuzzy", threshold=80, scorer_fuzzy="wratio")
-            self._log(f"Using default matcher: {self.matcher}")
-
         for level in levels_to_match:
-            self._log(f"Matching level {level}...")
-            data_matched, reference_no_match_level, candidate_no_match_level = self._match_level(
-                already_matched=data_matched,
-                target_level=level,
-                levels_already_matched=levels_already_matched,
-                attributes_level=attributes[level],
-                matching_col_suffix=matching_col_suffix,
+            self._log(f"Matching {level}...")
+            data_matched, candidate_no_match_level, reference_no_match_level = (
+                self._match_level(
+                    already_matched=data_matched,
+                    target_level=level,
+                    levels_already_matched=levels_already_matched,
+                    attributes_level=attributes[level],
+                    matching_col_suffix=matching_col_suffix,
+                )
             )
             levels_already_matched.append(level)
-            if not candidate_no_match_level.is_empty():
-                candidate_no_match_level = candidate_no_match_level.with_columns(
-                    pl.lit(level).alias("unmatched_level")
-                )
-                list_candidate_not_matched.append(candidate_no_match_level)
-
             if not reference_no_match_level.is_empty():
                 reference_no_match_level = reference_no_match_level.with_columns(
                     pl.lit(level).alias("unmatched_level")
                 )
                 list_reference_not_matched.append(reference_no_match_level)
+
+            if not candidate_no_match_level.is_empty():
+                candidate_no_match_level = candidate_no_match_level.with_columns(
+                    pl.lit(level).alias("unmatched_level")
+                )
+                list_candidate_not_matched.append(candidate_no_match_level)
 
         repeated_levels_check = []
         for level in levels_to_match:
@@ -179,23 +230,30 @@ class PyramidMatcher:
             repeated_levels_check.append(level)
 
         candidate_not_matched = (
-            pl.concat(list_candidate_not_matched) if list_candidate_not_matched else pl.DataFrame()
+            pl.concat(list_candidate_not_matched)
+            if list_candidate_not_matched
+            else pl.DataFrame()
         )
         reference_not_matched = (
-            pl.concat(list_reference_not_matched) if list_reference_not_matched else pl.DataFrame()
+            pl.concat(list_reference_not_matched)
+            if list_reference_not_matched
+            else pl.DataFrame()
         )
 
         data_matched, data_matched_simplified = self._reorder_match_columns(
             data_matched, levels_to_match, attributes, matching_col_suffix
         )
 
-        return data_matched, data_matched_simplified, reference_not_matched, candidate_not_matched
+        return (
+            data_matched,
+            data_matched_simplified,
+            reference_not_matched,
+            candidate_not_matched,
+        )
 
     def _log(self, message: str, level: str = "info") -> None:
         """Log a message with the specified level."""
-        getattr(self.logger, level)(message)  # log
-
-        if "current_run" in globals():
+        if self.logger is None:
             if level == "info":
                 current_run.log_info(message)
             elif level == "error":
@@ -204,6 +262,8 @@ class PyramidMatcher:
                 current_run.log_warning(message)
             else:
                 raise ValueError(f"Unsupported log level: {level}")
+        else:
+            getattr(self.logger, level)(message)  # log
 
     def _get_levels_to_match(self, matching_col_suffix: str) -> list:
         """If no levels_to_match are provided, detect the levels to match dynamically.
@@ -285,51 +345,65 @@ class PyramidMatcher:
             )
 
         list_match = []
-        list_no_match_data = []
-        list_no_match_pyramid = []
+        list_no_match_candidate = []
+        list_no_match_reference = []
         for row in already_matched.iter_rows(named=True):
             ref_group, candidate_group = self._select_group(
                 levels_already_matched, row, matching_col_suffix
             )
-            df_match_level_group, unmatched_reference_group, unmatched_candidate_group = (
-                self._match_level_group(
-                    reference_group=ref_group,
-                    candidate_group=candidate_group,
-                    level=target_level,
-                    attributes_level=attributes_level,
-                    schema_match=schema_match,
-                    matching_col_suffix=matching_col_suffix,
-                )
+            (
+                df_match_level_group,
+                unmatched_candidate_group,
+                unmatched_reference_group,
+            ) = self._match_level_group(
+                reference_group=ref_group,
+                candidate_group=candidate_group,
+                level=target_level,
+                attributes_level=attributes_level,
+                schema_match=schema_match,
+                matching_col_suffix=matching_col_suffix,
             )
             if len(df_match_level_group) > 0:
-                df_match_level_group = self._add_already_matched_levels(row, df_match_level_group)
+                df_match_level_group = self._add_already_matched_levels(
+                    row, df_match_level_group
+                )
                 list_match.append(df_match_level_group)
 
             if len(unmatched_candidate_group) > 0:
-                list_no_match_data.append(unmatched_candidate_group)
+                list_no_match_candidate.append(unmatched_candidate_group)
 
             if len(unmatched_reference_group) > 0:
-                list_no_match_pyramid.append(unmatched_reference_group)
+                list_no_match_reference.append(unmatched_reference_group)
 
         df_match = pl.concat(list_match) if len(list_match) > 0 else pl.DataFrame()
-        df_no_match_data = (
-            pl.concat(list_no_match_data) if len(list_no_match_data) > 0 else pl.DataFrame()
+        df_no_match_candidate = (
+            pl.concat(list_no_match_candidate)
+            if len(list_no_match_candidate) > 0
+            else pl.DataFrame()
         )
-        df_no_match_pyramid = (
-            pl.concat(list_no_match_pyramid) if len(list_no_match_pyramid) > 0 else pl.DataFrame()
+        df_no_match_reference = (
+            pl.concat(list_no_match_reference)
+            if len(list_no_match_reference) > 0
+            else pl.DataFrame()
         )
 
-        return df_match, df_no_match_data, df_no_match_pyramid
+        return df_match, df_no_match_candidate, df_no_match_reference
 
     def _define_schema_match(
         self, attributes_level: dict, target_level: str, matching_col_suffix: str
     ) -> list:
         return (
-            [self.prefix_input_data + target_level + matching_col_suffix]
-            + [self.prefix_target_data + target_level + matching_col_suffix]
-            + [f"{self.prefix_target_data}{attr}" for attr in attributes_level["reference"]]
+            [self.prefix_candidate_data + target_level + matching_col_suffix]
+            + [self.prefix_reference_data + target_level + matching_col_suffix]
+            + [
+                f"{self.prefix_reference_data}{attr}"
+                for attr in attributes_level["reference"]
+            ]
             + ["score_" + target_level]
-            + [f"{self.prefix_input_data}{attr}" for attr in attributes_level["candidate"]]
+            + [
+                f"{self.prefix_candidate_data}{attr}"
+                for attr in attributes_level["candidate"]
+            ]
         )
 
     def _check_levels(
@@ -389,20 +463,24 @@ class PyramidMatcher:
         Returns
         -------
         tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]
-            A tuple containing the matched data, unmatched data, and unmatched pyramid data.
+            A tuple containing the matched data, unmatched candidate data, and unmatched reference data.
         """
         col_name = level + matching_col_suffix
 
         reference_to_match = {
             row[0]: list(row[1:])
-            for row in reference_group.select([col_name] + attributes_level["reference"])
+            for row in reference_group.select(
+                [col_name] + attributes_level["reference"]
+            )
             .unique()
             .rows()
         }
 
         candidate_to_match = {
             row[0]: list(row[1:])
-            for row in candidate_group.select([col_name] + attributes_level["candidate"])
+            for row in candidate_group.select(
+                [col_name] + attributes_level["candidate"]
+            )
             .unique()
             .rows()
         }
@@ -414,7 +492,9 @@ class PyramidMatcher:
             matches = self.matcher.get_similarity(name_to_match, reference_to_match)
             if matches:
                 list_matches.append(
-                    [matches.query, matches.matched, matches.attributes, matches.score]
+                    [matches.query, matches.matched]
+                    + matches.attributes
+                    + [matches.score]
                     + attributes_data
                 )
 
@@ -427,23 +507,29 @@ class PyramidMatcher:
         else:
             df_matches = pl.DataFrame(schema=schema_match)
 
-        matched_data_names = df_matches[
-            self.prefix_input_data + level + matching_col_suffix
-        ].unique()
-        df_unmatched_candidate = self.candidate_pyramid.filter(
+        matched_data_names = (
+            df_matches[self.prefix_candidate_data + level + matching_col_suffix]
+            .unique()
+            .to_list()
+        )
+        df_unmatched_candidate = candidate_group.filter(
             ~pl.col(col_name).is_in(matched_data_names)
         )
 
-        matched_pyramid_names = df_matches[
-            self.prefix_target_data + level + matching_col_suffix
-        ].unique()
-        df_unmatched_reference = self.reference_pyramid.filter(
+        matched_pyramid_names = (
+            df_matches[self.prefix_reference_data + level + matching_col_suffix]
+            .unique()
+            .to_list()
+        )
+        df_unmatched_reference = reference_group.filter(
             ~pl.col(col_name).is_in(matched_pyramid_names)
         )
 
-        return df_matches, df_unmatched_reference, df_unmatched_candidate
+        return df_matches, df_unmatched_candidate, df_unmatched_reference
 
-    def _add_already_matched_levels(self, row: dict, df_match_row: pl.DataFrame) -> pl.DataFrame:
+    def _add_already_matched_levels(
+        self, row: dict, df_match_row: pl.DataFrame
+    ) -> pl.DataFrame:
         """Add the information from the levels that were already matched to the new matched row.
 
         Add the information about the results of the matching of the level_i
@@ -496,11 +582,11 @@ class PyramidMatcher:
         for level in levels_already_matched:
             relevant_candidate = relevant_candidate.filter(
                 pl.col(f"{level}{matching_col_suffix}")
-                == row[f"{self.prefix_input_data}{level}{matching_col_suffix}"]
+                == row[f"{self.prefix_candidate_data}{level}{matching_col_suffix}"]
             )
             relevant_ref = relevant_ref.filter(
                 pl.col(f"{level}{matching_col_suffix}")
-                == row[f"{self.prefix_target_data}{level}{matching_col_suffix}"]
+                == row[f"{self.prefix_reference_data}{level}{matching_col_suffix}"]
             )
 
         return relevant_ref, relevant_candidate
@@ -531,6 +617,15 @@ class PyramidMatcher:
                     level + matching_col_suffix,
                 ]:
                     attributes_ref.append(col)
+            if len(attributes_ref) == 0:
+                self._log(
+                    f"No attributes found for reference pyramid in level {level}."
+                    " Only matching column will be included."
+                )
+            else:
+                self._log(
+                    f"Attributes for reference pyramid in level {level}: {attributes_ref}"
+                )
 
             attributes_can = []
             for col in self.candidate_pyramid.columns:
@@ -538,13 +633,29 @@ class PyramidMatcher:
                     level + matching_col_suffix,
                 ]:
                     attributes_can.append(col)
+            if len(attributes_can) == 0:
+                self._log(
+                    f"No attributes found for candidate pyramid in level {level}."
+                    " Only matching column will be included."
+                )
+            else:
+                self._log(
+                    f"Attributes for candidate pyramid in level {level}: {attributes_can}"
+                )
 
-            attributes[level] = {"reference": attributes_ref, "candidate": attributes_can}
+            attributes[level] = {
+                "reference": attributes_ref,
+                "candidate": attributes_can,
+            }
 
         return attributes
 
     def _add_repeated_matches(
-        self, data: pl.DataFrame, level: str, upper_levels: list, matching_col_suffix: str
+        self,
+        data: pl.DataFrame,
+        level: str,
+        upper_levels: list,
+        matching_col_suffix: str,
     ) -> pl.DataFrame:
         """If we have matched the same target twice to different inputs, mark them.
 
@@ -566,16 +677,17 @@ class PyramidMatcher:
             The dataframe with the matched data, with an additional column
             indicating if there were repeated matches for the target.
         """
-        col_pyramid_name = self.prefix_target_data + level + matching_col_suffix
-        col_data_name = self.prefix_input_data + level + matching_col_suffix
+        col_reference_name = self.prefix_reference_data + level + matching_col_suffix
+        col_candidate_name = self.prefix_candidate_data + level + matching_col_suffix
         col_repeated_matches = "repeated_matches_" + level
         list_group_by = [
-            self.prefix_target_data + level + matching_col_suffix for level in upper_levels
-        ] + [col_pyramid_name]
+            self.prefix_reference_data + level + matching_col_suffix
+            for level in upper_levels
+        ] + [col_reference_name]
 
         counts = (
             data.group_by(list_group_by)
-            .agg(pl.col(col_data_name).n_unique().alias("count"))
+            .agg(pl.col(col_candidate_name).n_unique().alias("count"))
             .filter(pl.col("count") > 1)
         )
 
@@ -589,7 +701,11 @@ class PyramidMatcher:
         ).drop("count")
 
     def _reorder_match_columns(
-        self, data: pl.DataFrame, levels_to_match: list, attributes: dict, matching_col_suffix: str
+        self,
+        data: pl.DataFrame,
+        levels_to_match: list,
+        attributes: dict,
+        matching_col_suffix: str,
     ) -> tuple[pl.DataFrame, pl.DataFrame]:
         """Re order the columns in the matched dataframe.
 
@@ -623,16 +739,24 @@ class PyramidMatcher:
         cols_order_full = []
         cols_order_simple = []
         for level in levels_to_match:
-            cols_order_full.append(self.prefix_input_data + level + matching_col_suffix)
-            cols_order_simple.append(self.prefix_input_data + level + matching_col_suffix)
+            cols_order_full.append(
+                self.prefix_candidate_data + level + matching_col_suffix
+            )
+            cols_order_simple.append(
+                self.prefix_candidate_data + level + matching_col_suffix
+            )
             for attr in attributes[level]["candidate"]:
-                cols_order_full.append(self.prefix_input_data + attr)
-                cols_order_simple.append(self.prefix_input_data + attr)
-            cols_order_full.append(self.prefix_target_data + level + matching_col_suffix)
-            cols_order_simple.append(self.prefix_target_data + level + matching_col_suffix)
+                cols_order_full.append(self.prefix_candidate_data + attr)
+                cols_order_simple.append(self.prefix_candidate_data + attr)
+            cols_order_full.append(
+                self.prefix_reference_data + level + matching_col_suffix
+            )
+            cols_order_simple.append(
+                self.prefix_reference_data + level + matching_col_suffix
+            )
             for attr in attributes[level]["reference"]:
-                cols_order_full.append(self.prefix_target_data + attr)
-                cols_order_simple.append(self.prefix_target_data + attr)
+                cols_order_full.append(self.prefix_reference_data + attr)
+                cols_order_simple.append(self.prefix_reference_data + attr)
             cols_order_full.append("score_" + level)
             cols_order_full.append("repeated_matches_" + level)
         other_cols = [col for col in data.columns if col not in cols_order_full]
