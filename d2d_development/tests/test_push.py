@@ -25,9 +25,9 @@ def test_push_no_data_to_push():
     cols = [
         "dx",
         "period",
-        "orgUnit",
-        "categoryOptionCombo",
-        "attributeOptionCombo",
+        "org_unit",
+        "category_option_combo",
+        "attribute_option_combo",
         "value",
     ]
     empty_df = pl.DataFrame({col: [] for col in cols})
@@ -40,7 +40,7 @@ def test_push_no_data_to_push():
 def test_push_missing_mandatory_columns():
     """Test the push of data points to DHIS2."""
     pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
-    cols = ["period", "orgUnit", "categoryOptionCombo", "attributeOptionCombo", "value"]
+    cols = ["period", "org_unit", "category_option_combo", "attribute_option_combo", "value"]
     empty_df = pl.DataFrame({col: [] for col in cols})
     with pytest.raises(PusherError, match=r"Input data is missing mandatory columns: dx"):
         pusher.push_data(df_data=empty_df)
@@ -545,3 +545,7 @@ def test_push_summary_rejected_points():
         pusher._push_data_points(invalid_data_points)  # access private method for error handling testing
         assert pusher.summary["rejected_datapoints"][0]["datapoint"] == invalid_dp_1
         assert pusher.summary["rejected_datapoints"][1]["datapoint"] == invalid_dp_2
+
+
+if __name__ == "__main__":
+    test_push_serialize_data_point_valid()

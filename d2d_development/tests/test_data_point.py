@@ -7,31 +7,31 @@ from tests.mock_dhis2_get import MockDHIS2Client
 def test_data_point_model_to_str():
     """Test conversion of a Polars DataFrame to JSON using the DataPointModel."""
     single_point = DataPointModel(
-        dataElement="de1",
+        data_element="de1",
         period="202601",
-        orgUnit="OU1",
-        categoryOptionCombo="coc1",
-        attributeOptionCombo="aoc1",
+        org_unit="OU1",
+        category_option_combo="coc1",
+        attribute_option_combo="aoc1",
         value="100.2",
     )
 
-    assert "dataElement=de1" in str(single_point)
-    assert "period=202601" in str(single_point)
-    assert "orgUnit=OU1" in str(single_point)
-    assert "categoryOptionCombo=coc1" in str(single_point)
-    assert "attributeOptionCombo=aoc1" in str(single_point)
-    assert "value=100.2" in str(single_point)
+    assert "'dataElement': 'de1'" in str(single_point)
+    assert "'period': '202601'" in str(single_point)
+    assert "'orgUnit': 'OU1'" in str(single_point)
+    assert "'categoryOptionCombo': 'coc1'" in str(single_point)
+    assert "'attributeOptionCombo': 'aoc1'" in str(single_point)
+    assert "'value': '100.2'" in str(single_point)
 
 
 def test_data_point_model_to_json():
     """Test conversion of a Polars DataFrame to JSON using the DataPointModel."""
     data_elements = pl.DataFrame(MockDHIS2Client().data_value_sets.get())
     single_point = DataPointModel(
-        dataElement=data_elements[0]["dataElement"].item(),
+        data_element=data_elements[0]["dataElement"].item(),
         period=data_elements[0]["period"].item(),
-        orgUnit=data_elements[0]["orgUnit"].item(),
-        categoryOptionCombo=data_elements[0]["categoryOptionCombo"].item(),
-        attributeOptionCombo=data_elements[0]["attributeOptionCombo"].item(),
+        org_unit=data_elements[0]["orgUnit"].item(),
+        category_option_combo=data_elements[0]["categoryOptionCombo"].item(),
+        attribute_option_combo=data_elements[0]["attributeOptionCombo"].item(),
         value=data_elements[0]["value"].item(),
     )
 

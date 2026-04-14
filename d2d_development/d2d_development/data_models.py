@@ -1,12 +1,14 @@
 import json
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import NamedTuple
 
 import pandas as pd
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 
 
-class DataType(Enum):
+class DataType(StrEnum):
     """Enumeration of supported DHIS2 data types for extraction."""
 
     DATA_ELEMENT = "DATA_ELEMENT"
@@ -14,71 +16,41 @@ class DataType(Enum):
     INDICATOR = "INDICATOR"
 
 
-@dataclass
-class DataPointModel:
-    """Data model representing a DHIS2 data point.
+class DataPointModel(BaseModel):
+    """Data model representing a DHIS2 data point."""
 
-    Attributes
-    ----------
-    dataElement : str
-        The unique identifier for the data element.
-    period : str
-        The reporting period for the data point.
-    orgUnit : str
-        The organizational unit associated with the data point.
-    categoryOptionCombo : str
-        The category option combination identifier.
-    attributeOptionCombo : str
-        The attribute option combination identifier.
-    value : float
-        The value of the data point.
-    """
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
-    dataElement: str  # noqa: N815
+    data_element: str
     period: str
-    orgUnit: str  # noqa: N815
-    categoryOptionCombo: str  # noqa: N815
-    attributeOptionCombo: str  # noqa: N815
-    value: str
+    org_unit: str
+    category_option_combo: str
+    attribute_option_combo: str
+    value: str | None
 
     def to_json(self) -> dict:
-        """Return a dictionary representation of the data point suitable for DHIS2 JSON format.
+        """Return a dictionary representation of the data point for DHIS2 payload.
 
         Returns
         -------
         dict
             A dictionary with keys corresponding to DHIS2 data value fields.
         """
-        if self.value is None or (isinstance(self.value, str) and not self.value.strip()):
-            return {
-                "dataElement": self.dataElement,
-                "period": self.period,
-                "orgUnit": self.orgUnit,
-                "categoryOptionCombo": self.categoryOptionCombo,
-                "attributeOptionCombo": self.attributeOptionCombo,
-                "value": "",
-                "comment": "deleted value",
-            }
-
-        return {
-            "dataElement": self.dataElement,
+        base = {
+            "dataElement": self.data_element,
             "period": self.period,
-            "orgUnit": self.orgUnit,
-            "categoryOptionCombo": self.categoryOptionCombo,
-            "attributeOptionCombo": self.attributeOptionCombo,
-            "value": self.value,
+            "orgUnit": self.org_unit,
+            "categoryOptionCombo": self.category_option_combo,
+            "attributeOptionCombo": self.attribute_option_combo,
         }
 
+        if self.value is None or not self.value.strip():
+            return {**base, "value": "", "comment": "deleted value"}
+
+        return {**base, "value": self.value}
+
     def __str__(self) -> str:
-        return (
-            f"DataPointModel("
-            f"dataElement={self.dataElement}, "
-            f"period={self.period}, "
-            f"orgUnit={self.orgUnit}, "
-            f"categoryOptionCombo={self.categoryOptionCombo}, "
-            f"attributeOptionCombo={self.attributeOptionCombo}, "
-            f"value={self.value})"
-        )
+        return str(self.model_dump(by_alias=True))
 
 
 @dataclass

@@ -445,20 +445,20 @@ class DHIS2Extractor:
         map_cocs : bool, optional
             NOTE: IndicatorsExtractor can be used to retrieve data elements by passing valid data element ids
              to the indicators parameter. Therefore we can use the client flag `include_coc` to include `co` column.
-            *Only applicable if `dataType` is "INDICATOR". Default is False.
+            *Only applicable if `data_type` is "INDICATOR". Default is False.
 
         Returns
         -------
         pl.DataFrame
             A DataFrame formatted to SNIS standards, with the following columns (snake_case):
-            - "dataType": The type of data (DATA_ELEMENT, REPORTING_RATE, or INDICATOR).
+            - "data_type": The type of data (DATA_ELEMENT, REPORTING_RATE, or INDICATOR).
             - "dx": Data element, dataset, or indicator UID.
             - "period": Reporting period.
-            - "orgUnit": Organization unit.
-            - "categoryOptionCombo": (Only for DATA_ELEMENT) Category option combo UID.
-            - "attributeOptionCombo": (Only for DATA_ELEMENT) Attribute option combo UID.
-            - "rateMetric": (Only for REPORTING_RATE) Rate metric.
-            - "domainType": Data domain (AGGREGATED or TRACKER).
+            - "org_unit": Organization unit.
+            - "category_option_combo": (Only for DATA_ELEMENT) Category option combo UID.
+            - "attribute_option_combo": (Only for DATA_ELEMENT) Attribute option combo UID.
+            - "rate_metric": (Only for REPORTING_RATE) Rate metric.
+            - "domain_type": Data domain (AGGREGATED or TRACKER).
             - "value": Data value.
         """
         if dhis_data.height == 0:
@@ -473,33 +473,33 @@ class DHIS2Extractor:
         try:
             n = dhis_data.height
             data = {
-                "dataType": [data_type.value] * n,
+                "data_type": [data_type.value] * n,
                 "dx": None,
                 "period": dhis_data["period"] if "period" in dhis_data.columns else None,
-                "orgUnit": dhis_data["orgUnit"] if "orgUnit" in dhis_data.columns else None,
-                "categoryOptionCombo": None,
-                "attributeOptionCombo": None,
-                "rateMetric": None,
-                "domainType": [domain_type] * n,
+                "org_unit": dhis_data["orgUnit"] if "orgUnit" in dhis_data.columns else None,
+                "category_option_combo": None,
+                "attribute_option_combo": None,
+                "rate_metric": None,
+                "domain_type": [domain_type] * n,
                 "value": dhis_data["value"] if "value" in dhis_data.columns else None,
             }
             if data_type == DataType.DATA_ELEMENT:
                 data["dx"] = dhis_data["dataElement"] if "dataElement" in dhis_data.columns else None
-                data["categoryOptionCombo"] = (
+                data["category_option_combo"] = (
                     dhis_data["categoryOptionCombo"] if "categoryOptionCombo" in dhis_data.columns else None
                 )
-                data["attributeOptionCombo"] = (
+                data["attribute_option_combo"] = (
                     dhis_data["attributeOptionCombo"] if "attributeOptionCombo" in dhis_data.columns else None
                 )
             elif data_type == DataType.REPORTING_RATE:
                 if "dx" in dhis_data.columns:
                     split = dhis_data["dx"].str.split_exact(".", 1)
                     data["dx"] = split.struct.field("field_0")
-                    data["rateMetric"] = split.struct.field("field_1")
+                    data["rate_metric"] = split.struct.field("field_1")
             elif data_type == DataType.INDICATOR:
                 data["dx"] = dhis_data["dx"] if "dx" in dhis_data.columns else None
                 if map_cocs and "categoryOptionCombo" in dhis_data.columns:
-                    data["categoryOptionCombo"] = dhis_data["categoryOptionCombo"]
+                    data["category_option_combo"] = dhis_data["categoryOptionCombo"]
             return pl.DataFrame(data)
 
         except AttributeError as e:

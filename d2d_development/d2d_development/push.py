@@ -29,7 +29,7 @@ class DHIS2Pusher:
         if import_strategy not in {"CREATE", "UPDATE", "CREATE_AND_UPDATE"}:
             raise PusherError("Invalid import strategy (use 'CREATE', 'UPDATE' or 'CREATE_AND_UPDATE')")
 
-        self.mandatory_fields = ["dx", "period", "orgUnit", "categoryOptionCombo", "attributeOptionCombo", "value"]
+        self.mandatory_fields = ["dx", "period", "org_unit", "category_option_combo", "attribute_option_combo", "value"]
         self.import_strategy = import_strategy
         self.dry_run = dry_run
         self.max_post = max_post
@@ -196,9 +196,9 @@ class DHIS2Pusher:
             DataPointModel(
                 dataElement=row["dx"],
                 period=row["period"],
-                orgUnit=row["orgUnit"],
-                categoryOptionCombo=row["categoryOptionCombo"],
-                attributeOptionCombo=row["attributeOptionCombo"],
+                orgUnit=row["org_unit"],
+                categoryOptionCombo=row["category_option_combo"],
+                attributeOptionCombo=row["attribute_option_combo"],
                 value=row["value"],
             ).to_json()
             for row in data_points.to_dicts()

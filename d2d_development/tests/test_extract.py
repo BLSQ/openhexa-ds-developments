@@ -15,17 +15,17 @@ def test_extract_map_data_elements():
     assert isinstance(result, pl.DataFrame)
     assert result.shape == (9, 9)
     assert result.columns == [
-        "dataType",
+        "data_type",
         "dx",
         "period",
-        "orgUnit",
-        "categoryOptionCombo",
-        "attributeOptionCombo",
-        "rateMetric",
-        "domainType",
+        "org_unit",
+        "category_option_combo",
+        "attribute_option_combo",
+        "rate_metric",
+        "domain_type",
         "value",
     ]
-    assert set(result["dataType"]) == {"DATA_ELEMENT"}
+    assert set(result["data_type"]) == {"DATA_ELEMENT"}
     assert set(result["dx"].drop_nulls()) == {
         "AAA111",
         "BBB222",
@@ -37,7 +37,7 @@ def test_extract_map_data_elements():
         "INVALID4",
     }
     assert set(result["period"].drop_nulls()) == {"202501"}
-    assert set(result["orgUnit"].drop_nulls()) == {
+    assert set(result["org_unit"].drop_nulls()) == {
         "ORG001",
         "ORG003",
         "ORG005",
@@ -45,7 +45,7 @@ def test_extract_map_data_elements():
         "ORG002",
         "ORG004",
     }
-    assert set(result["categoryOptionCombo"].drop_nulls()) == {
+    assert set(result["category_option_combo"].drop_nulls()) == {
         "CAT006",
         "CAT005",
         "CAT003",
@@ -53,7 +53,7 @@ def test_extract_map_data_elements():
         "CAT001",
         "CAT004",
     }
-    assert set(result["attributeOptionCombo"].drop_nulls()) == {
+    assert set(result["attribute_option_combo"].drop_nulls()) == {
         "ATTR001",
         "ATTR002",
         "ATTR003",
@@ -61,8 +61,8 @@ def test_extract_map_data_elements():
         "ATTR005",
         "ATTR006",
     }
-    assert set(result["rateMetric"]) == {None}
-    assert set(result["domainType"]) == {"AGGREGATED"}
+    assert set(result["rate_metric"]) == {None}
+    assert set(result["domain_type"]) == {"AGGREGATED"}
     assert set(result["value"].drop_nulls()) == {"12", "18", "25", "55.0"}
 
 
@@ -80,28 +80,28 @@ def test_extract_map_reporting_rates():
     assert isinstance(result, pl.DataFrame)
     assert result.shape == (3, 9)
     assert result.columns == [
-        "dataType",
+        "data_type",
         "dx",
         "period",
-        "orgUnit",
-        "categoryOptionCombo",
-        "attributeOptionCombo",
-        "rateMetric",
-        "domainType",
+        "org_unit",
+        "category_option_combo",
+        "attribute_option_combo",
+        "rate_metric",
+        "domain_type",
         "value",
     ]
-    assert result["dataType"].unique().to_list() == ["REPORTING_RATE"]
+    assert result["data_type"].unique().to_list() == ["REPORTING_RATE"]
     assert result["dx"].to_list() == ["AAA111", "BBB222", "CCC333"]
     assert result["period"].to_list() == ["202409", "202409", "202409"]
-    assert result["orgUnit"].to_list() == ["OU001", "OU002", "OU003"]
-    assert result["categoryOptionCombo"].to_list() == [None, None, None]
-    assert result["attributeOptionCombo"].to_list() == [None, None, None]
-    assert result["rateMetric"].to_list() == [
+    assert result["org_unit"].to_list() == ["OU001", "OU002", "OU003"]
+    assert result["category_option_combo"].to_list() == [None, None, None]
+    assert result["attribute_option_combo"].to_list() == [None, None, None]
+    assert result["rate_metric"].to_list() == [
         "REPORTING_RATE",
         "EXPECTED_REPORTS",
         "REPORTING_RATE",
     ]
-    assert result["domainType"].to_list() == ["AGGREGATED", "AGGREGATED", "AGGREGATED"]
+    assert result["domain_type"].to_list() == ["AGGREGATED", "AGGREGATED", "AGGREGATED"]
     assert result["value"].to_list() == ["100", "0", "100"]
 
 
@@ -115,24 +115,24 @@ def test_extract_map_indicator():
     assert isinstance(result, pl.DataFrame)
     assert result.shape == (3, 9)
     assert result.columns == [
-        "dataType",
+        "data_type",
         "dx",
         "period",
-        "orgUnit",
-        "categoryOptionCombo",
-        "attributeOptionCombo",
-        "rateMetric",
-        "domainType",
+        "org_unit",
+        "category_option_combo",
+        "attribute_option_combo",
+        "rate_metric",
+        "domain_type",
         "value",
     ]
-    assert result["dataType"].unique().to_list() == ["INDICATOR"]
+    assert result["data_type"].unique().to_list() == ["INDICATOR"]
     assert result["dx"].to_list() == ["INDICATOR1", "INDICATOR2", "INDICATOR3"]
     assert result["period"].to_list() == ["202501", "202501", "202501"]
-    assert result["orgUnit"].to_list() == ["ORG001", "ORG002", "ORG003"]
-    assert result["categoryOptionCombo"].to_list() == [None, None, None]
-    assert result["attributeOptionCombo"].to_list() == [None, None, None]
-    assert result["rateMetric"].to_list() == [None, None, None]
-    assert result["domainType"].to_list() == ["AGGREGATED", "AGGREGATED", "AGGREGATED"]
+    assert result["org_unit"].to_list() == ["ORG001", "ORG002", "ORG003"]
+    assert result["category_option_combo"].to_list() == [None, None, None]
+    assert result["attribute_option_combo"].to_list() == [None, None, None]
+    assert result["rate_metric"].to_list() == [None, None, None]
+    assert result["domain_type"].to_list() == ["AGGREGATED", "AGGREGATED", "AGGREGATED"]
     assert result["value"].to_list() == ["5.0", "7.0", "9.0"]
 
 
@@ -298,16 +298,16 @@ def test_extract_get_data_elements_with_indicator_extractor():
 
     assert result.shape == (3, 9)
     assert result.columns == [
-        "dataType",
+        "data_type",
         "dx",
         "period",
-        "orgUnit",
-        "categoryOptionCombo",
-        "attributeOptionCombo",
-        "rateMetric",
-        "domainType",
+        "org_unit",
+        "category_option_combo",
+        "attribute_option_combo",
+        "rate_metric",
+        "domain_type",
         "value",
     ]
-    assert result["dataType"].unique().to_list() == ["INDICATOR"]
+    assert result["data_type"].unique().to_list() == ["INDICATOR"]
     assert result["dx"].to_list() == ["DATAELEMENT1", "DATAELEMENT2", "DATAELEMENT3"]
-    assert result["categoryOptionCombo"].to_list() == ["COC001", "COC002", "COC003"]
+    assert result["category_option_combo"].to_list() == ["COC001", "COC002", "COC003"]
