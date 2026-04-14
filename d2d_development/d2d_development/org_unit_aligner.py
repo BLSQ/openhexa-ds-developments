@@ -12,32 +12,28 @@ from requests.structures import CaseInsensitiveDict
 from .data_models import OrgUnitObj
 
 
-class OrgUnitCreateError(RuntimeError):
+class OrgUnitCreateError(Exception):
     """Custom error for organisation unit create failures."""
 
     pass
 
 
-class OrgUnitUpdateError(RuntimeError):
+class OrgUnitUpdateError(Exception):
     """Custom error for organisation unit update failures."""
 
     pass
 
 
 class DHIS2PyramidAligner:
-    """Align organisation units between two DHIS2 instances.
+    """Align organisation units (OUs) between two DHIS2 instances.
 
-    This class is stateless and provides methods to synchronize organisation units
-    from a source DHIS2 instance to a target DHIS2 instance. The alignment process
-    compares the pyramids of both instances and performs the necessary operations
-    to keep the target up to date with the source.
+    Compares source and target pyramids (hierarchies) and:
+      - Creates OUs missing in the target
+      - Updates OUs with changed attributes
+      - Tracks actions and errors in a summary attribute for reporting
+    Supports validation, logging, and dry-run mode.
 
-    Supported operations include:
-    - Creating organisation units that exist in the source but not in the target.
-    - Updating organisation units that exist in both but differ in their attributes.
-
-    This class does not store any state between calls; all data must be provided
-    as method parameters.
+    Usage: Instantiate with a logger and call align_to().
     """
 
     def __init__(self, logger: logging.Logger):
