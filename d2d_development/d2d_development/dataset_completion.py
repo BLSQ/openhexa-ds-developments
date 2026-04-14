@@ -8,7 +8,7 @@ from openhexa.sdk import current_run
 from openhexa.toolbox.dhis2 import DHIS2
 
 
-class DHIS2ImportError(RuntimeError):
+class DHIS2ImportError(Exception):
     """Custom exception for DHIS2 import errors."""
 
     pass
@@ -17,8 +17,10 @@ class DHIS2ImportError(RuntimeError):
 class DatasetCompletionSync:
     """Main class to handle pushing data to DHIS2.
 
-    ATTENTION: This syncer assumes the source and target DHIS2 instances
-     have the same organisation units configured.
+    NOTE: This syncer is experimental and should be used with caution.
+
+    NOTE: This syncer assumes the source and target DHIS2 instances
+     should have the same dataset structure and org unit structure.
     """
 
     def __init__(
