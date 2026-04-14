@@ -4,14 +4,10 @@ from pathlib import Path
 
 import pandas as pd
 import requests
-from openhexa.sdk import current_run
 from openhexa.toolbox.dhis2 import DHIS2
 
-
-class DHIS2ImportError(Exception):
-    """Custom exception for DHIS2 import errors."""
-
-    pass
+from .exceptions import DHIS2DatasetCompletionError
+from .utils import log_message
 
 
 class DatasetCompletionSync:
@@ -31,18 +27,84 @@ class DatasetCompletionSync:
         dry_run: bool = True,
         logger: logging.Logger | None = None,
     ):
-        self.source_dhis2 = source_dhis2
-        self.target_dhis2 = target_dhis2
         if import_strategy not in {"CREATE", "UPDATE", "CREATE_AND_UPDATE"}:
             raise ValueError("Invalid import strategy (use 'CREATE', 'UPDATE' or 'CREATE_AND_UPDATE')")
+        self.source_dhis2 = source_dhis2
+        self.target_dhis2 = target_dhis2
         self.import_strategy = import_strategy
         self.dry_run = dry_run
+        self.completion_table = pd.DataFrame()
+        self._reset_summary()
+        self.logger = logger if logger else logging.getLogger(__name__)
+        self.log_function = log_message
+
+    def _reset_summary(self) -> None:
+        """Reset the import summary to its initial state."""
         self.import_summary = {
             "import_counts": {"imported": 0, "updated": 0, "ignored": 0, "deleted": 0},
-            "errors": {"fetch_errors": 0, "no_completion": 0, "push_errors": 0},
+            "errors": {"fetch_errors": [], "no_completion": [], "push_errors": []},
         }
-        self.completion_table = pd.DataFrame()
-        self.logger = logger if logger else logging.getLogger(__name__)
+
+    def _update_import_summary(self, response: dict) -> None:
+        if response:
+            import_counts = response.get("importCount", {})
+            for key in ["imported", "updated", "ignored", "deleted"]:
+                self.import_summary["import_counts"][key] += import_counts.get(key, 0)
+
+    def _log_message(self, message: str, level: str = "info", log_current_run: bool = True, error_details: str = ""):
+        """Log a message using the configured logging function."""
+        self.log_function(
+            logger=self.logger,
+            message=message,
+            error_details=error_details,
+            level=level,
+            log_current_run=log_current_run,
+            exception_class=DHIS2DatasetCompletionError,
+        )
+
+    def _log_and_append_error(
+        self,
+        error_type: str,
+        ds: str,
+        pe: str,
+        ou: str,
+        error_msg: str,
+        level: str = "error",
+        log_current_run: bool = False,
+    ):
+        """Helper function to log an error message and append it to the import summary."""
+        error_dict = {"ds": ds, "pe": pe, "ou": ou, "error": error_msg}
+        self.import_summary["errors"][error_type].append(error_dict)
+        self._log_message(f"{error_msg} [{error_type}] {error_dict}", level=level, log_current_run=log_current_run)
+
+    def _log_summary(self, org_units: list, period: str) -> None:
+        """Log a summary of the dataset completion sync process."""
+        self._log_message(
+            f"Dataset completion period {period} summary: {self.import_summary['import_counts']} "
+            f"total org units: {len(org_units)} "
+        )
+
+        total_no_completion = len(self.import_summary["errors"]["no_completion"])
+        if total_no_completion > 0:
+            self._log_message(
+                f"{total_no_completion} out of "
+                f"{len(org_units)} completion statuses failed to be retrieved from source.",
+                level="warning",
+            )
+
+        total_fetch_errors = len(self.import_summary["errors"]["fetch_errors"])
+        if total_fetch_errors > 0:
+            self._log_message(
+                f"{total_fetch_errors} out of {len(org_units)} completion statuses failed to fetch.",
+                level="warning",
+            )
+
+        total_push_errors = len(self.import_summary["errors"]["push_errors"])
+        if total_push_errors > 0:
+            self._log_message(
+                f"{total_push_errors} out of {len(org_units)} completion statuses failed to push.",
+                level="warning",
+            )
 
     def _fetch_completion_status_from_source(
         self,
@@ -75,26 +137,48 @@ class DatasetCompletionSync:
 
         try:
             response = self.source_dhis2.api.session.get(endpoint, params=params, timeout=timeout)
-            response.raise_for_status()  # raise exception for HTTP errors
-            try:
-                completion = response.json().get("completeDataSetRegistrations", [])
-            except ValueError as e:
-                self.import_summary["errors"]["fetch_errors"] += 1
-                self.logger.error(f"Invalid JSON from {endpoint} for ds:{dataset_id} pe:{period} ou:{org_unit}: {e}")
-                return []
-            if not completion and not children:
-                self.import_summary["errors"]["no_completion"] += 1
-                self.logger.info(
-                    f"No completion status found at source for ds: {dataset_id} pe: {period} ou: {org_unit}"
-                )
-            return completion if completion else []
+            response.raise_for_status()
         except requests.RequestException as e:
-            self.import_summary["errors"]["fetch_errors"] += 1
-            self.logger.error(
-                f"GET request to {self.source_dhis2.api.url} failed to retrieve completion status for "
-                f"ds: {dataset_id} pe: {period} ou: {org_unit} failed : {e}"
+            self._log_and_append_error(
+                error_type="fetch_errors",
+                ds=dataset_id,
+                pe=period,
+                ou=org_unit,
+                error_msg=(
+                    f"GET request to {self.source_dhis2.api.url} (param: children={children}): "
+                    f"Failed to retrieve completion status {e!s}"
+                ),
             )
-        return []
+            return []
+
+        try:
+            data = response.json()
+        except (ValueError, json.JSONDecodeError) as e:
+            self._log_and_append_error(
+                error_type="fetch_errors",
+                ds=dataset_id,
+                pe=period,
+                ou=org_unit,
+                error_msg=(
+                    f"GET request to {self.source_dhis2.api.url} (param: children={children}): "
+                    f"Invalid JSON response: {e!s}"
+                ),
+            )
+            return []
+
+        completion = data.get("completeDataSetRegistrations", [])
+        if not completion and not children:
+            self._log_and_append_error(
+                error_type="no_completion",
+                ds=dataset_id,
+                pe=period,
+                ou=org_unit,
+                error_msg=(
+                    f"GET request to {self.source_dhis2.api.url} (param: children={children}): Empty completion status"
+                ),
+            )
+
+        return completion
 
     def _push_completion_status_to_target(
         self,
@@ -143,11 +227,8 @@ class DatasetCompletionSync:
             response = self.target_dhis2.api.session.post(endpoint, json=payload, params=params, timeout=timeout)
             response.raise_for_status()
         except requests.RequestException:
-            # avoid doube counting errors in summary
-            # self.import_summary["errors"]["push_errors"] += 1
-            raise
-        finally:
             self._process_response(ds=dataset_id, pe=period, ou=org_unit, response=response)
+            # No re-raise, so sync can continue
 
     def _try_build_source_completion_table(self, org_units: list[str], dataset_id: str, period: str) -> None:
         """Build a completion status table for all organisation units provided.
@@ -170,7 +251,7 @@ class DatasetCompletionSync:
 
         self.completion_table = pd.DataFrame(completion_statuses)
 
-    def _get_source_completion_status_for_ou(self, dataset_id: str, period: str, org_unit: str) -> dict | None:
+    def _get_source_completion_status_for(self, dataset_id: str, period: str, org_unit: str) -> dict | None:
         """Handle fetching completion status for a specific org unit.
 
         Returns:
@@ -196,7 +277,7 @@ class DatasetCompletionSync:
         target_dataset_id: str,
         org_units: list[str] | None,
         parent_ou: list[str] | None,
-        period: list[str],
+        period: str,
         logging_interval: int = 2000,
         ds_processed_path: Path | None = None,
         mark_uncompleted_as_processed: bool = False,
@@ -212,34 +293,28 @@ class DatasetCompletionSync:
         ds_processed_path: Path to save processed org units (if None, no file saving nor comparison).
         mark_uncompleted_as_processed: If True, org units with no completion status will be marked as processed.
         """
-        self.reset_import_summary()
+        self._reset_summary()
 
         if not org_units:
-            msg = f"No org units provided for period {period}. DS sync skipped."
-            self.logger.warning(msg)
-            current_run.log_warning(msg)
+            self._log_message(f"No org units provided for period {period}. DS sync skipped.", level="warning")
             return
 
         org_units_to_process = self._get_unprocessed_org_units(org_units, ds_processed_path, period)
         if not org_units_to_process:
-            msg = f"All org units already processed for period {period}. DS sync skipped."
-            self.logger.info(msg)
-            current_run.log_info(msg)
+            self._log_message(f"All org units already processed for period {period}. DS sync skipped.")
             return
 
-        msg = (
+        self._log_message(
             f"Starting dataset '{target_dataset_id}' completion process for period: "
             f"{period} org units: {len(org_units_to_process)}."
         )
-        current_run.log_info(msg)
-        self.logger.info(msg)
 
         self._try_build_source_completion_table(org_units=parent_ou, dataset_id=source_dataset_id, period=period)
 
         try:
             processed = []
             for idx, ou in enumerate(org_units_to_process, start=1):
-                completion_status = self._get_source_completion_status_for_ou(
+                completion_status = self._get_source_completion_status_for(
                     dataset_id=source_dataset_id,
                     period=period,
                     org_unit=ou,
@@ -251,33 +326,35 @@ class DatasetCompletionSync:
                     continue
 
                 if "date" not in completion_status or "completed" not in completion_status:
-                    self.import_summary["errors"]["push_errors"] += 1
-                    self.logger.error(
-                        f"Missing keys in completion status for period {period}, org unit {ou}: {completion_status}"
+                    self._log_and_append_error(
+                        error_type="fetch_errors",
+                        ds=source_dataset_id,
+                        pe=period,
+                        ou=ou,
+                        error_msg=f"Missing keys in completion status: {completion_status}",
                     )
                     continue
 
-                try:
-                    self._push_completion_status_to_target(
-                        dataset_id=target_dataset_id,
-                        period=period,
-                        org_unit=ou,
-                        date=completion_status.get("date"),
-                        completed=completion_status.get("completed"),
-                    )
-                    processed.append(ou)
-                except Exception as e:
-                    self.logger.error(f"Error pushing completion status for period {period}, org unit {ou}: {e}")
+                self._push_completion_status_to_target(
+                    dataset_id=target_dataset_id,
+                    period=period,
+                    org_unit=ou,
+                    date=completion_status.get("date"),
+                    completed=completion_status.get("completed"),
+                )
+                processed.append(ou)
 
                 if idx % logging_interval == 0 or idx == len(org_units_to_process):
-                    current_run.log_info(f"{idx} / {len(org_units_to_process)} OUs processed")
+                    self._log_message(f"{idx} / {len(org_units_to_process)} OUs processed")
                     self._update_processed_ds_sync_file(
                         processed=processed,
                         period=period,
                         processed_path=ds_processed_path,
                     )
         except Exception as e:
-            self.logger.error(f"Error setting dataset completion for dataset {target_dataset_id}, period {period}: {e}")
+            error_msg = f"Dataset completion sync failed for dataset {target_dataset_id}, period {period}. Error: {e}"
+            self._log_message(error_msg, level="error")
+            raise DHIS2DatasetCompletionError(error_msg) from e
         finally:
             self._log_summary(org_units=org_units_to_process, period=period)
 
@@ -297,13 +374,11 @@ class DatasetCompletionSync:
             remaining = [ou for ou in org_units if ou not in processed_set]
 
             msg = f"Loaded {len(processed_set)} processed org units, {len(remaining)} to process for period {period}."
-            self.logger.info(msg)
-            current_run.log_info(msg)
+            self._log_message(msg)
             return remaining
         except Exception as e:
             msg = f"Error loading processed org units file: {ds_processed_fname}. Returning all org units to process."
-            self.logger.error(msg + f" Error: {e}")
-            current_run.log_info(msg)
+            self._log_message(msg, level="error", error_details=str(e))
             return org_units
 
     def _update_processed_ds_sync_file(
@@ -314,111 +389,99 @@ class DatasetCompletionSync:
     ) -> None:
         """Save the processed org units to a parquet file."""
         if processed_path is None:
-            current_run.log_warning("No processed path provided, skipping saving processed org units.")
+            self._log_message("No processed path provided, processed org units saving skipped.", level="warning")
+            return
+        try:
+            processed_path.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            self._log_message(f"Failed to create directory {processed_path}: {e}", level="error")
             return
 
-        processed_path.mkdir(parents=True, exist_ok=True)
         ds_processed_file = processed_path / f"ds_ou_processed_{period}.parquet"
-
         msg = None
         final_processed = processed
 
         if ds_processed_file.exists():
-            existing_df = pd.read_parquet(ds_processed_file)
-            existing_org_units = set(existing_df["ORG_UNIT"].unique())
-            new_org_units = [ou for ou in processed if ou not in existing_org_units]
-            final_processed = list(existing_org_units) + new_org_units
-            msg = (
-                f"Found {len(existing_org_units)} processed OUs, "
-                f"updating file {ds_processed_file.name} with {len(new_org_units)} new OUs."
-            )
+            try:
+                existing_df = pd.read_parquet(ds_processed_file)
+                if "ORG_UNIT" in existing_df.columns:
+                    existing_org_units = set(existing_df["ORG_UNIT"].unique())
+                else:
+                    existing_org_units = set()
+                    self._log_message(
+                        f"Processed file {ds_processed_file} missing ORG_UNIT col, treating as empty.", level="warning"
+                    )
+                new_org_units = [ou for ou in processed if ou not in existing_org_units]
+                final_processed = list(existing_org_units) + new_org_units
+                msg = (
+                    f"Found {len(existing_org_units)} processed OUs, "
+                    f"updating file {ds_processed_file.name} with {len(new_org_units)} new OUs."
+                )
+            except Exception as e:
+                self._log_message(f"Error reading existing processed file {ds_processed_file}: {e}", level="error")
+                final_processed = processed
 
         if final_processed:
-            df_processed = pd.DataFrame({"ORG_UNIT": final_processed})
-            df_processed.to_parquet(ds_processed_file, index=False)
-            msg = f"Saved {len(final_processed)} processed org units in {ds_processed_file.name}."
+            try:
+                df_processed = pd.DataFrame({"ORG_UNIT": final_processed})
+                df_processed.to_parquet(ds_processed_file, index=False)
+                msg = f"Saved {len(final_processed)} processed org units in {ds_processed_file.name}."
+            except Exception as e:
+                self._log_message(f"Error writing processed file {ds_processed_file}: {e}", level="error")
+                return
 
         if msg:
-            current_run.log_info(msg)
-            self.logger.info(msg)
+            self._log_message(msg)
 
-    def _log_summary(self, org_units: list, period: str) -> None:
-        msg = (
-            f"Dataset completion period {period} summary: {self.import_summary['import_counts']} "
-            f"total org units: {len(org_units)} "
-        )
-        current_run.log_info(msg)
-        self.logger.info(msg)
-
-        if self.import_summary["errors"]["no_completion"] > 0:
-            msg = (
-                f"{self.import_summary['errors']['no_completion']} out of "
-                f"{len(org_units)} completion statuses failed to be retrieved from source."
-            )
-            current_run.log_warning(msg)
-            self.logger.warning(msg)
-
-        if self.import_summary["errors"]["fetch_errors"] > 0:
-            msg = (
-                f"{self.import_summary['errors']['fetch_errors']} out of "
-                f"{len(org_units)} completion statuses failed to fetch."
-            )
-            current_run.log_warning(msg)
-            self.logger.warning(msg)
-
-        if self.import_summary["errors"]["push_errors"] > 0:
-            msg = (
-                f"{self.import_summary['errors']['push_errors']} "
-                f"out of {len(org_units)} completion statuses failed to push."
-            )
-            current_run.log_warning(msg)
-            self.logger.warning(msg)
-
-    def _process_response(self, ds: str, pe: str, ou: str, response: dict) -> None:
+    def _process_response(self, ds: str, pe: str, ou: str, response: requests.Response) -> None:
         """Log the response from the DHIS2 API after pushing completion status."""
-        json_or_none = self._safe_json(response)
-        if not json_or_none:
-            self.import_summary["errors"]["push_errors"] += 1
-            self.logger.error(
-                f"No JSON response received for completion request ds: {ds} pe: {pe} ou: {ou} from DHIS2 API."
-            )
-            raise DHIS2ImportError("Empty or invalid JSON response from DHIS2")
+        json_data = self._try_parse_json(response)
 
-        conflicts: list[str] = json_or_none.get("conflicts", {})
-        status = json_or_none.get("status")
-        if status in ["ERROR", "WARNING"] or conflicts:
-            for conflict in conflicts:
-                self.import_summary["errors"]["push_errors"] += 1
-                self.logger.error(
-                    f"Conflict pushing completion for ds: {ds} pe: {pe} ou: {ou} status: {status} - {conflict}"
-                )
-            self._update_import_summary(response=json_or_none)
-            raise DHIS2ImportError(
-                f"DHIS2 completion push failed with status={status} "
-                f"and {len(conflicts)} conflict(s) for ds:{ds} pe:{pe} ou:{ou}"
+        if json_data is None:
+            self._log_and_append_error(
+                error_type="push_errors",
+                ds=ds,
+                pe=pe,
+                ou=ou,
+                error_msg="No JSON response received for completion request",
             )
+            return
+
+        if not isinstance(json_data, dict):
+            self._log_and_append_error(
+                error_type="push_errors",
+                ds=ds,
+                pe=pe,
+                ou=ou,
+                error_msg=f"Invalid JSON response format (expected dict): {json_data!s}",
+            )
+            return
+
+        conflicts: list[str] = json_data.get("conflicts", [])
+        if not isinstance(conflicts, list):
+            conflicts = [str(conflicts)]
+        status = (json_data.get("status") or "").upper()
+
+        if status in {"ERROR", "WARNING"} or conflicts:
+            conflict_str = "; ".join(str(conflict) for conflict in conflicts)
+            self._log_and_append_error(
+                error_type="push_errors",
+                ds=ds,
+                pe=pe,
+                ou=ou,
+                error_msg=f"conflict_{status.lower()} - details: {conflict_str}",
+            )
+            self._update_import_summary(response=json_data)
+            return
 
         if status == "SUCCESS":
             self.logger.info(f"Successfully pushed to target completion ds: {ds} pe:{pe} ou: {ou}")
-            self._update_import_summary(response=json_or_none)
+            self._update_import_summary(response=json_data)
 
-    def _safe_json(self, r: requests.Response) -> dict | None:
+    def _try_parse_json(self, r: requests.Response) -> dict | None:
         if r is None:
             return None
         try:
             return r.json()
         except (ValueError, json.JSONDecodeError):
             return None
-
-    def _update_import_summary(self, response: dict) -> None:
-        if response:
-            import_counts = response.get("importCount", {})
-            for key in ["imported", "updated", "ignored", "deleted"]:
-                self.import_summary["import_counts"][key] += import_counts.get(key, 0)
-
-    def reset_import_summary(self) -> None:
-        """Reset the import summary to its initial state."""
-        self.import_summary = {
-            "import_counts": {"imported": 0, "updated": 0, "ignored": 0, "deleted": 0},
-            "errors": {"fetch_errors": 0, "no_completion": 0, "push_errors": 0},
-        }
