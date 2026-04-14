@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from pathlib import Path
 
@@ -12,7 +14,7 @@ from .utils import log_message, save_to_parquet
 class DataElementsExtractor:
     """Handles downloading and formatting of data elements from DHIS2."""
 
-    def __init__(self, extractor: "DHIS2Extractor"):
+    def __init__(self, extractor: DHIS2Extractor):
         self.extractor = extractor
 
     def download_period(
@@ -107,7 +109,7 @@ class DataElementsExtractor:
 class IndicatorsExtractor:
     """Handles downloading and formatting of indicators from DHIS2."""
 
-    def __init__(self, extractor: "DHIS2Extractor"):
+    def __init__(self, extractor: DHIS2Extractor):
         """Initialize the IndicatorsExtractor with a reference to the main DHIS2Extractor."""
         self.extractor = extractor
 
@@ -214,7 +216,7 @@ class IndicatorsExtractor:
 class ReportingRatesExtractor:
     """Handles downloading and formatting of reporting rates from DHIS2."""
 
-    def __init__(self, extractor: "DHIS2Extractor"):
+    def __init__(self, extractor: DHIS2Extractor):
         """Initialize the ReportingRatesExtractor with a reference to the main DHIS2Extractor."""
         self.extractor = extractor
 
