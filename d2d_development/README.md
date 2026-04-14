@@ -10,6 +10,11 @@ Install this library on its own:
 pip install git+https://github.com/BLSQ/openhexa-ds-developments.git#subdirectory=d2d_development
 ```
 
+> **Note:**  
+> Additional classes in `dataset_completion.py` and `org_unit_aligner.py` are included in this package.  
+> These classes are still in beta and may change; they are usable but should be used with caution.
+
+
 ## Main Classes
 
 ### DHIS2Extractor
