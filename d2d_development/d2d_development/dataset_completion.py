@@ -203,7 +203,28 @@ class DatasetCompletionSync:
             requests.HTTPError if the request fails after retries.
         """
         endpoint = f"{self.target_dhis2.api.url}/completeDataSetRegistrations"
-        payload = {
+        payload = self._build_completion_payload(
+            dataset_id=dataset_id, period=period, org_unit=org_unit, date=date, completed=completed
+        )
+        params = self._build_push_params()
+        response = None
+        try:
+            response = self.target_dhis2.api.session.post(endpoint, json=payload, params=params, timeout=timeout)
+            response.raise_for_status()
+            self._handle_push_response(ds=dataset_id, pe=period, ou=org_unit, response=response)
+        except requests.RequestException:
+            # Catch DHIS2DatasetCompletionError errors
+            self._handle_push_error_response(ds=dataset_id, pe=period, ou=org_unit, response=response)
+
+    def _build_completion_payload(
+        self, dataset_id: str, period: str, org_unit: str, date: str, completed: bool
+    ) -> dict:
+        """Build the payload for the completion status request.
+
+        Returns:
+            dict: The payload to be sent with the completion status request.
+        """
+        return {
             "completeDataSetRegistrations": [
                 {
                     "organisationUnit": org_unit,
@@ -214,21 +235,20 @@ class DatasetCompletionSync:
                 }
             ]
         }
-        params = {
-            "dryRun": str(self.dry_run).lower(),
+
+    def _build_push_params(self) -> dict:
+        """Build the parameters for the push request.
+
+        Returns:
+            dict: The parameters to be sent with the push request.
+        """
+        return {
+            "dryRun": self.dry_run,
             "importStrategy": self.import_strategy,
             "preheatCache": True,
             "skipAudit": True,
             "reportMode": "FULL",
         }
-
-        response = None
-        try:
-            response = self.target_dhis2.api.session.post(endpoint, json=payload, params=params, timeout=timeout)
-            response.raise_for_status()
-        except requests.RequestException:
-            self._process_response(ds=dataset_id, pe=period, ou=org_unit, response=response)
-            # No re-raise, so sync can continue
 
     def _try_build_source_completion_table(self, org_units: list[str], dataset_id: str, period: str) -> None:
         """Build a completion status table for all organisation units provided.
@@ -335,14 +355,18 @@ class DatasetCompletionSync:
                     )
                     continue
 
-                self._push_completion_status_to_target(
-                    dataset_id=target_dataset_id,
-                    period=period,
-                    org_unit=ou,
-                    date=completion_status.get("date"),
-                    completed=completion_status.get("completed"),
-                )
-                processed.append(ou)
+                try:
+                    self._push_completion_status_to_target(
+                        dataset_id=target_dataset_id,
+                        period=period,
+                        org_unit=ou,
+                        date=completion_status.get("date"),
+                        completed=completion_status.get("completed"),
+                    )
+                    processed.append(ou)
+                except DHIS2DatasetCompletionError:
+                    # on error: The msg is logged and the ou is skipped
+                    pass
 
                 if idx % logging_interval == 0 or idx == len(org_units_to_process):
                     self._log_message(f"{idx} / {len(org_units_to_process)} OUs processed")
@@ -361,8 +385,12 @@ class DatasetCompletionSync:
     def _get_unprocessed_org_units(self, org_units: list, processed_path: Path | None, period: str) -> list:
         if processed_path is None:
             return org_units
+
         ds_processed_fname = processed_path / f"ds_ou_processed_{period}.parquet"
         if not ds_processed_fname.exists():
+            self._log_message(
+                f"No processed file found for {period}, processing {len(org_units)} org units.",
+            )
             return org_units
 
         try:
@@ -373,12 +401,16 @@ class DatasetCompletionSync:
             processed_set = set(processed_df["ORG_UNIT"].dropna().unique())
             remaining = [ou for ou in org_units if ou not in processed_set]
 
-            msg = f"Loaded {len(processed_set)} processed org units, {len(remaining)} to process for period {period}."
-            self._log_message(msg)
+            self._log_message(
+                f"Loaded {len(processed_set)} processed org units, {len(remaining)} to process for period {period}."
+            )
             return remaining
         except Exception as e:
-            msg = f"Error loading processed org units file: {ds_processed_fname}. Returning all org units to process."
-            self._log_message(msg, level="error", error_details=str(e))
+            self._log_message(
+                f"Error loading processed file: {ds_processed_fname}. Returning all org units to process.",
+                level="error",
+                error_details=str(e),
+            )
             return org_units
 
     def _update_processed_ds_sync_file(
@@ -433,8 +465,30 @@ class DatasetCompletionSync:
         if msg:
             self._log_message(msg)
 
-    def _process_response(self, ds: str, pe: str, ou: str, response: requests.Response) -> None:
-        """Log the response from the DHIS2 API after pushing completion status."""
+    def _handle_push_response(self, ds: str, pe: str, ou: str, response: requests.Response) -> None:
+        """Handle a successful DHIS2 completion status push response.
+
+        Args:
+            ds (str): Dataset ID.
+            pe (str): Period.
+            ou (str): Organisation unit ID.
+            response (Response): The response from the DHIS2 API.
+        """
+        json_data = self._try_parse_json(response)
+        status = (json_data.get("status") or "").upper() if json_data else None
+        if status == "SUCCESS":
+            self.logger.info(f"Successfully pushed completion to target ds: {ds} pe:{pe} ou: {ou}")
+            self._update_import_summary(response=json_data)
+            return
+
+        raise requests.RequestException
+
+    def _handle_push_error_response(self, ds: str, pe: str, ou: str, response: requests.Response) -> None:
+        """Log the response from the DHIS2 API after pushing completion status.
+
+        Raise DHIS2DatasetCompletionError if the response indicates an error or warning,
+        or if the response format is invalid.
+        """
         json_data = self._try_parse_json(response)
 
         if json_data is None:
@@ -445,7 +499,7 @@ class DatasetCompletionSync:
                 ou=ou,
                 error_msg="No JSON response received for completion request",
             )
-            return
+            raise DHIS2DatasetCompletionError("No JSON response received for completion request")
 
         if not isinstance(json_data, dict):
             self._log_and_append_error(
@@ -455,7 +509,7 @@ class DatasetCompletionSync:
                 ou=ou,
                 error_msg=f"Invalid JSON response format (expected dict): {json_data!s}",
             )
-            return
+            raise DHIS2DatasetCompletionError(f"Invalid JSON response format (expected dict): {json_data!s}")
 
         conflicts: list[str] = json_data.get("conflicts", [])
         if not isinstance(conflicts, list):
@@ -469,14 +523,10 @@ class DatasetCompletionSync:
                 ds=ds,
                 pe=pe,
                 ou=ou,
-                error_msg=f"conflict_{status.lower()} - details: {conflict_str}",
+                error_msg=f"conflict with status: {status.lower()} - details: {conflict_str}",
             )
             self._update_import_summary(response=json_data)
-            return
-
-        if status == "SUCCESS":
-            self.logger.info(f"Successfully pushed to target completion ds: {ds} pe:{pe} ou: {ou}")
-            self._update_import_summary(response=json_data)
+            raise DHIS2DatasetCompletionError(f"Failed to push completion status: {json_data!s}")
 
     def _try_parse_json(self, r: requests.Response) -> dict | None:
         if r is None:
