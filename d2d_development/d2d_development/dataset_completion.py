@@ -33,6 +33,7 @@ class DatasetCompletionSync:
         self.target_dhis2 = target_dhis2
         self.import_strategy = import_strategy
         self.dry_run = dry_run
+        self.processed = []
         self.completion_table = pd.DataFrame()
         self._reset_summary()
         self.logger = logger if logger else logging.getLogger(__name__)
@@ -48,6 +49,8 @@ class DatasetCompletionSync:
     def _update_import_summary(self, response: dict) -> None:
         if response:
             import_counts = response.get("importCount", {})
+            if not import_counts:
+                import_counts = response.get("response", {}).get("importCount", {})
             for key in ["imported", "updated", "ignored", "deleted"]:
                 self.import_summary["import_counts"][key] += import_counts.get(key, 0)
 
@@ -144,16 +147,12 @@ class DatasetCompletionSync:
                 ds=dataset_id,
                 pe=period,
                 ou=org_unit,
-                error_msg=(
-                    f"GET request to {self.source_dhis2.api.url} (param: children={children}): "
-                    f"Failed to retrieve completion status {e!s}"
-                ),
+                error_msg=(f"GET request with (param: children={children}) failed to retrieve completion status {e!s}"),
             )
             return []
 
-        try:
-            data = response.json()
-        except (ValueError, json.JSONDecodeError) as e:
+        data = self._try_parse_json(response)
+        if data is None:
             self._log_and_append_error(
                 error_type="fetch_errors",
                 ds=dataset_id,
@@ -161,7 +160,7 @@ class DatasetCompletionSync:
                 ou=org_unit,
                 error_msg=(
                     f"GET request to {self.source_dhis2.api.url} (param: children={children}): "
-                    f"Invalid JSON response: {e!s}"
+                    f"Invalid or empty JSON response"
                 ),
             )
             return []
@@ -173,9 +172,7 @@ class DatasetCompletionSync:
                 ds=dataset_id,
                 pe=period,
                 ou=org_unit,
-                error_msg=(
-                    f"GET request to {self.source_dhis2.api.url} (param: children={children}): Empty completion status"
-                ),
+                error_msg=(f"GET request (param: children={children}): Empty completion status"),
             )
 
         return completion
@@ -291,13 +288,24 @@ class DatasetCompletionSync:
 
         return None
 
+    def _handle_empty_completion_status(self, ds: str, pe: str, ou: str, uncompleted_as_processed: bool) -> None:
+        """Handle the case when no completion status is found for an org unit."""
+        cp = {"ds": ds, "pe": pe, "ou": ou, "error": "empty completion status"}
+        if uncompleted_as_processed:
+            self._log_message(
+                f"No completion, setting point as processed: {cp}", level="warning", log_current_run=False
+            )
+            self.processed.append(ou)  # if True, empty completion -> mark as processed
+        else:
+            self._log_message(f"No completion status fetch for: {cp}", level="warning", log_current_run=False)
+
     def sync(
         self,
         source_dataset_id: str,
         target_dataset_id: str,
         org_units: list[str] | None,
-        parent_ou: list[str] | None,
         period: str,
+        parent_ou: list[str] | None = None,
         logging_interval: int = 2000,
         ds_processed_path: Path | None = None,
         mark_uncompleted_as_processed: bool = False,
@@ -332,7 +340,7 @@ class DatasetCompletionSync:
         self._try_build_source_completion_table(org_units=parent_ou, dataset_id=source_dataset_id, period=period)
 
         try:
-            processed = []
+            self.processed = []
             for idx, ou in enumerate(org_units_to_process, start=1):
                 completion_status = self._get_source_completion_status_for(
                     dataset_id=source_dataset_id,
@@ -341,8 +349,12 @@ class DatasetCompletionSync:
                 )
 
                 if not completion_status:
-                    if mark_uncompleted_as_processed:
-                        processed.append(ou)  # if True, empty completion -> mark as processed
+                    self._handle_empty_completion_status(
+                        ds=source_dataset_id,
+                        pe=period,
+                        ou=ou,
+                        uncompleted_as_processed=mark_uncompleted_as_processed,
+                    )
                     continue
 
                 if "date" not in completion_status or "completed" not in completion_status:
@@ -351,7 +363,7 @@ class DatasetCompletionSync:
                         ds=source_dataset_id,
                         pe=period,
                         ou=ou,
-                        error_msg=f"Missing keys in completion status: {completion_status}",
+                        error_msg="Missing keys 'date' or 'completed' from completion response",
                     )
                     continue
 
@@ -363,7 +375,7 @@ class DatasetCompletionSync:
                         date=completion_status.get("date"),
                         completed=completion_status.get("completed"),
                     )
-                    processed.append(ou)
+                    self.processed.append(ou)
                 except DHIS2DatasetCompletionError:
                     # on error: The msg is logged and the ou is skipped
                     pass
@@ -371,7 +383,6 @@ class DatasetCompletionSync:
                 if idx % logging_interval == 0 or idx == len(org_units_to_process):
                     self._log_message(f"{idx} / {len(org_units_to_process)} OUs processed")
                     self._update_processed_ds_sync_file(
-                        processed=processed,
                         period=period,
                         processed_path=ds_processed_path,
                     )
@@ -415,7 +426,6 @@ class DatasetCompletionSync:
 
     def _update_processed_ds_sync_file(
         self,
-        processed: list,
         period: str,
         processed_path: Path | None,
     ) -> None:
@@ -431,7 +441,7 @@ class DatasetCompletionSync:
 
         ds_processed_file = processed_path / f"ds_ou_processed_{period}.parquet"
         msg = None
-        final_processed = processed
+        final_processed = self.processed
 
         if ds_processed_file.exists():
             try:
@@ -443,7 +453,7 @@ class DatasetCompletionSync:
                     self._log_message(
                         f"Processed file {ds_processed_file} missing ORG_UNIT col, treating as empty.", level="warning"
                     )
-                new_org_units = [ou for ou in processed if ou not in existing_org_units]
+                new_org_units = [ou for ou in self.processed if ou not in existing_org_units]
                 final_processed = list(existing_org_units) + new_org_units
                 msg = (
                     f"Found {len(existing_org_units)} processed OUs, "
@@ -451,7 +461,7 @@ class DatasetCompletionSync:
                 )
             except Exception as e:
                 self._log_message(f"Error reading existing processed file {ds_processed_file}: {e}", level="error")
-                final_processed = processed
+                final_processed = self.processed
 
         if final_processed:
             try:
@@ -476,8 +486,8 @@ class DatasetCompletionSync:
         """
         json_data = self._try_parse_json(response)
         status = (json_data.get("status") or "").upper() if json_data else None
-        if status == "SUCCESS":
-            self.logger.info(f"Successfully pushed completion to target ds: {ds} pe:{pe} ou: {ou}")
+        if status in ("SUCCESS", "OK"):
+            self._log_message(f"Successful POST response for ds: {ds} pe:{pe} ou: {ou}")
             self._update_import_summary(response=json_data)
             return
 
@@ -512,6 +522,8 @@ class DatasetCompletionSync:
             raise DHIS2DatasetCompletionError(f"Invalid JSON response format (expected dict): {json_data!s}")
 
         conflicts: list[str] = json_data.get("conflicts", [])
+        if not conflicts:
+            conflicts: list[str] = json_data.get("response", {}).get("conflicts", [])
         if not isinstance(conflicts, list):
             conflicts = [str(conflicts)]
         status = (json_data.get("status") or "").upper()
@@ -523,7 +535,7 @@ class DatasetCompletionSync:
                 ds=ds,
                 pe=pe,
                 ou=ou,
-                error_msg=f"conflict with status: {status.lower()} - details: {conflict_str}",
+                error_msg=f"Status ({status}): {conflict_str}",
             )
             self._update_import_summary(response=json_data)
             raise DHIS2DatasetCompletionError(f"Failed to push completion status: {json_data!s}")
@@ -532,6 +544,9 @@ class DatasetCompletionSync:
         if r is None:
             return None
         try:
-            return r.json()
+            data = r.json()
+            if not data:
+                return None
+            return data
         except (ValueError, json.JSONDecodeError):
             return None

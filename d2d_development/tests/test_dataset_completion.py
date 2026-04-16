@@ -1,6 +1,24 @@
 from unittest.mock import MagicMock
 
+import pytest
+import requests
+
 from d2d_development.dataset_completion import DatasetCompletionSync
+from tests.mock_dhis2_responses import (
+    MOCK_DHIS2_COMPLETION_200_IMP_RESPONSE_V2_37,
+    MOCK_DHIS2_COMPLETION_200_IMP_RESPONSE_V2_40,
+    MOCK_DHIS2_COMPLETION_200_UPD_RESPONSE_V2_37,
+    MOCK_DHIS2_COMPLETION_200_UPD_RESPONSE_V2_40,
+    MOCK_DHIS2_COMPLETION_CONFLICT_409_DS_RESPONSE_V2_37,
+    MOCK_DHIS2_COMPLETION_CONFLICT_409_DS_RESPONSE_V2_40,
+    MOCK_DHIS2_COMPLETION_CONFLICT_409_OU_RESPONSE_V2_37,
+    MOCK_DHIS2_COMPLETION_CONFLICT_409_OU_RESPONSE_V2_40,
+    MOCK_DHIS2_COMPLETION_CONFLICT_409_PE_RESPONSE_V2_37,
+    MOCK_DHIS2_COMPLETION_CONFLICT_409_PE_RESPONSE_V2_40,
+    MOCK_DHIS2_COMPLETION_EMPTY_RESPONSE,
+)
+
+# TODO: missing test for processing file load and save.
 
 
 def test_log_and_append_error_updates_summary_and_logs():
@@ -59,3 +77,309 @@ def test_log_and_append_error_multiple_errors():
     sync._log_and_append_error("fetch_errors", "DS5", "202605", "OU5", "First error")
     sync._log_and_append_error("fetch_errors", "DS5", "202605", "OU6", "Second error")
     assert len(sync.import_summary["errors"]["fetch_errors"]) == 2
+
+
+@pytest.mark.parametrize(
+    "mock_response", [MOCK_DHIS2_COMPLETION_200_IMP_RESPONSE_V2_37, MOCK_DHIS2_COMPLETION_200_IMP_RESPONSE_V2_40]
+)
+def test_sync_completion_post_import_success_response(mock_response: dict):
+    """Test that _sync_completion handles an import response correctly."""
+    dhis2_source = MagicMock()
+    dhis2_target = MagicMock()
+    # Mock GET response
+    mock_get_response = MagicMock()
+    mock_get_response.json.return_value = {
+        "completeDataSetRegistrations": [
+            {
+                "period": "202601",
+                "dataSet": "DS1",
+                "organisationUnit": "ou1",
+                "attributeOptionCombo": "HllvX50cXC0",
+                "date": "2026-01-31",
+                "storedBy": "OpenHexa",
+                "completed": True,
+            }
+        ]
+    }
+    dhis2_source.api.session.get.return_value = mock_get_response
+
+    # Mock POST response
+    mock_post_response = MagicMock()
+    mock_post_response.json.return_value = mock_response
+    dhis2_target.api.session.post.return_value = mock_post_response
+
+    # Run the sync method
+    sync = DatasetCompletionSync(dhis2_source, dhis2_target)
+    sync.log_function = MagicMock()
+    sync._reset_summary()
+    sync.sync(source_dataset_id="DS1", target_dataset_id="DS2", org_units=["ou1"], period="202601")
+    assert sync.import_summary["import_counts"]["imported"] == 1
+    assert sync.import_summary["import_counts"]["updated"] == 0
+    assert sync.import_summary["import_counts"]["ignored"] == 0
+    assert sync.import_summary["import_counts"]["deleted"] == 0
+
+
+@pytest.mark.parametrize(
+    "mock_response", [MOCK_DHIS2_COMPLETION_200_UPD_RESPONSE_V2_37, MOCK_DHIS2_COMPLETION_200_UPD_RESPONSE_V2_40]
+)
+def test_sync_completion_post_update_success_response(mock_response: dict):
+    """Test that sync completion handles an update response correctly."""
+    dhis2_source = MagicMock()
+    dhis2_target = MagicMock()
+    # Mock GET response
+    mock_get_response = MagicMock()
+    mock_get_response.json.return_value = {
+        "completeDataSetRegistrations": [
+            {
+                "period": "202601",
+                "dataSet": "DS1",
+                "organisationUnit": "ou1",
+                "attributeOptionCombo": "HllvX50cXC0",
+                "date": "2026-01-31",
+                "storedBy": "OpenHexa",
+                "completed": True,
+            }
+        ]
+    }
+    dhis2_source.api.session.get.return_value = mock_get_response
+
+    # Mock POST response
+    mock_post_response = MagicMock()
+    mock_post_response.json.return_value = mock_response
+    dhis2_target.api.session.post.return_value = mock_post_response
+
+    # Run the sync method
+    sync = DatasetCompletionSync(dhis2_source, dhis2_target)
+    sync.log_function = MagicMock()
+    sync._reset_summary()
+    sync.sync(source_dataset_id="DS1", target_dataset_id="DS2", org_units=["ou1"], period="202601")
+    assert sync.import_summary["import_counts"]["imported"] == 0
+    assert sync.import_summary["import_counts"]["updated"] == 1
+    assert sync.import_summary["import_counts"]["ignored"] == 0
+    assert sync.import_summary["import_counts"]["deleted"] == 0
+
+
+def test_sync_completion_post_error_empty_json():
+    """Test the sync completion handles an empty JSON response gracefully."""
+    dhis2_source = MagicMock()
+    dhis2_target = MagicMock()
+    # Mock GET response
+    mock_get_response = MagicMock()
+    mock_get_response.json.return_value = {
+        "completeDataSetRegistrations": [
+            {
+                "period": "202601",
+                "dataSet": "DS1",
+                "organisationUnit": "ou1",
+                "attributeOptionCombo": "HllvX50cXC0",
+                "date": "2026-01-31",
+                "storedBy": "OpenHexa",
+                "completed": True,
+            }
+        ]
+    }
+    dhis2_source.api.session.get.return_value = mock_get_response
+
+    # Mock POST response
+    mock_post_response = MagicMock()
+    mock_post_response.json.return_value = MOCK_DHIS2_COMPLETION_EMPTY_RESPONSE
+    dhis2_target.api.session.post.return_value = mock_post_response
+
+    # Run the sync method
+    sync = DatasetCompletionSync(dhis2_source, dhis2_target)
+    sync.log_function = MagicMock()
+    sync._reset_summary()
+    sync.sync(source_dataset_id="DS1", target_dataset_id="DS2", org_units=["ou1"], period="202601")
+    assert sync.import_summary["import_counts"]["imported"] == 0
+    assert sync.import_summary["import_counts"]["updated"] == 0
+    assert sync.import_summary["import_counts"]["ignored"] == 0
+    assert sync.import_summary["import_counts"]["deleted"] == 0
+    assert sync.import_summary["errors"]["push_errors"] == [
+        {"ds": "DS2", "pe": "202601", "ou": "ou1", "error": "No JSON response received for completion request"}
+    ]
+
+
+@pytest.mark.parametrize(
+    "mock_response,expected_error",  # noqa: PT006
+    [
+        # v2.37
+        (
+            MOCK_DHIS2_COMPLETION_CONFLICT_409_OU_RESPONSE_V2_37,
+            "{'object': 'WRONG', 'value': 'Organisation unit not found or not accessible'}",
+        ),
+        (MOCK_DHIS2_COMPLETION_CONFLICT_409_PE_RESPONSE_V2_37, "{'object': 'WRONG', 'value': 'Period not valid'}"),
+        (
+            MOCK_DHIS2_COMPLETION_CONFLICT_409_DS_RESPONSE_V2_37,
+            "{'object': 'WRONG', 'value': 'Data set not found or not accessible'}",
+        ),
+        # v2.40
+        (
+            MOCK_DHIS2_COMPLETION_CONFLICT_409_OU_RESPONSE_V2_40,
+            "{'object': 'WRONG', 'value': 'Organisation unit not found or not accessible'}",
+        ),
+        (MOCK_DHIS2_COMPLETION_CONFLICT_409_PE_RESPONSE_V2_40, "{'object': 'WRONG', 'value': 'Period not valid'}"),
+        (
+            MOCK_DHIS2_COMPLETION_CONFLICT_409_DS_RESPONSE_V2_40,
+            "{'value': 'Data set not found or not accessible'}",
+        ),  # just different
+    ],
+)
+def test_sync_completion_post_error_wrong_value(mock_response: dict, expected_error: str):
+    """Test the sync completion handles a wrong value response.
+
+    Values such as: ds id, ou and period produce a similar error.
+    """
+    dhis2_source = MagicMock()
+    dhis2_target = MagicMock()
+    # Mock GET response
+    mock_get_response = MagicMock()
+    mock_get_response.json.return_value = {
+        "completeDataSetRegistrations": [
+            {
+                "period": "202601",
+                "dataSet": "DS1",
+                "organisationUnit": "ou1",
+                "attributeOptionCombo": "HllvX50cXC0",
+                "date": "2026-01-31",
+                "storedBy": "OpenHexa",
+                "completed": True,
+            }
+        ]
+    }
+    dhis2_source.api.session.get.return_value = mock_get_response
+
+    # Mock POST response
+    mock_post_response = MagicMock()
+    mock_post_response.json.return_value = mock_response
+    dhis2_target.api.session.post.return_value = mock_post_response
+
+    # Run the sync method
+    sync = DatasetCompletionSync(dhis2_source, dhis2_target)
+    sync.log_function = MagicMock()
+    sync._reset_summary()
+    sync.sync(source_dataset_id="DS1", target_dataset_id="DS2", org_units=["ou1"], period="202601")
+    assert sync.import_summary["import_counts"]["imported"] == 0
+    assert sync.import_summary["import_counts"]["updated"] == 0
+    assert sync.import_summary["import_counts"]["ignored"] == 1
+    assert sync.import_summary["import_counts"]["deleted"] == 0
+    error_entry = sync.import_summary["errors"]["push_errors"][0]
+    assert expected_error in error_entry["error"]
+
+
+def test_sync_completion_get_missing_key_error():
+    """Test the sync completion handles an empty JSON response gracefully."""
+    dhis2_source = MagicMock()
+    dhis2_target = MagicMock()
+    # Mock GET response
+    mock_get_response = MagicMock()
+    completion_source = {
+        "completeDataSetRegistrations": [
+            {
+                "period": "202601",
+                "dataSet": "DS1",
+                "organisationUnit": "ou1",
+                "attributeOptionCombo": "HllvX50cXC0",
+                # "date": "2026-01-31", -> Missing 'date' field to simulate error
+                "storedBy": "OpenHexa",
+                "completed": True,
+            }
+        ]
+    }
+    mock_get_response.json.return_value = completion_source
+    dhis2_source.api.session.get.return_value = mock_get_response
+
+    # Run the sync method
+    sync = DatasetCompletionSync(dhis2_source, dhis2_target)
+    sync.log_function = MagicMock()
+    sync._reset_summary()
+    sync.sync(source_dataset_id="DS1", target_dataset_id="DS2", org_units=["ou1"], period="202601")
+    assert sync.import_summary["import_counts"]["imported"] == 0
+    assert sync.import_summary["import_counts"]["updated"] == 0
+    assert sync.import_summary["import_counts"]["ignored"] == 0
+    assert sync.import_summary["import_counts"]["deleted"] == 0
+    assert sync.import_summary["errors"]["fetch_errors"] == [
+        {
+            "ds": "DS1",
+            "pe": "202601",
+            "ou": "ou1",
+            "error": "Missing keys 'date' or 'completed' from completion response",
+        }
+    ]
+
+
+def test_mark_uncompleted_as_processed_add_ou_processed_list():
+    """Test that the mark_uncompleted_as_processed adds org units without completion to the processed list."""
+    dhis2_source = MagicMock()
+    dhis2_target = MagicMock()
+    # Simulate no completion status for the org unit
+    mock_get_response = MagicMock()
+    mock_get_response.json.return_value = {"completeDataSetRegistrations": []}
+    dhis2_source.api.session.get.return_value = mock_get_response
+    dhis2_target.api.session.post = MagicMock()
+
+    # Case 1: mark_uncompleted_as_processed=True
+    sync = DatasetCompletionSync(dhis2_source, dhis2_target)
+    sync.log_function = MagicMock()
+    sync._reset_summary()
+    sync.sync(
+        source_dataset_id="DS1",
+        target_dataset_id="DS2",
+        org_units=["ou1"],
+        period="202601",
+        mark_uncompleted_as_processed=True,
+    )
+    assert "ou1" in sync.processed
+
+    # Case 2: mark_uncompleted_as_processed=False
+    sync = DatasetCompletionSync(dhis2_source, dhis2_target)
+    sync.log_function = MagicMock()
+    sync._reset_summary()
+    sync.sync(
+        source_dataset_id="DS1",
+        target_dataset_id="DS2",
+        org_units=["ou1"],
+        period="202601",
+        mark_uncompleted_as_processed=False,
+    )
+    assert "ou1" not in sync.processed
+
+
+def test_sync_completion_get_409_error():
+    """Test the sync completion handles fetch error response gracefully."""
+    dhis2_source = MagicMock()
+    dhis2_target = MagicMock()
+    # Mock GET response
+    mock_get_response = MagicMock()
+    mock_get_response.status_code = 409
+    mock_get_response.raise_for_status.side_effect = requests.HTTPError("409 Client Error: Conflict for url")
+    # error valid for v2.37 and v2.40
+    completion_source = {
+        "httpStatus": "Conflict",
+        "httpStatusCode": 409,
+        "status": "ERROR",
+        "message": "At least one data set must be specified",
+        "errorCode": "E2013",
+    }
+    mock_get_response.json.return_value = completion_source
+    dhis2_source.api.session.get.return_value = mock_get_response
+
+    # Run the sync method
+    sync = DatasetCompletionSync(dhis2_source, dhis2_target)
+    sync.log_function = MagicMock()
+    sync._reset_summary()
+    sync.sync(source_dataset_id="DS1", target_dataset_id="DS2", org_units=["ou1"], period="202601")
+    assert sync.import_summary["import_counts"]["imported"] == 0
+    assert sync.import_summary["import_counts"]["updated"] == 0
+    assert sync.import_summary["import_counts"]["ignored"] == 0
+    assert sync.import_summary["import_counts"]["deleted"] == 0
+    assert sync.import_summary["errors"]["fetch_errors"] == [
+        {
+            "ds": "DS1",
+            "pe": "202601",
+            "ou": "ou1",
+            "error": (
+                "GET request with (param: children=False) failed to retrieve "
+                "completion status 409 Client Error: Conflict for url"
+            ),
+        }
+    ]
