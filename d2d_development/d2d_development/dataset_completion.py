@@ -296,8 +296,6 @@ class DatasetCompletionSync:
                 f"No completion, setting point as processed: {cp}", level="warning", log_current_run=False
             )
             self.processed.append(ou)  # if True, empty completion -> mark as processed
-        else:
-            self._log_message(f"No completion status fetch for: {cp}", level="warning", log_current_run=False)
 
     def sync(
         self,
