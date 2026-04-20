@@ -306,7 +306,7 @@ class DatasetCompletionSync:
         org_units: list[str] | None,
         period: str,
         parent_ou: list[str] | None = None,
-        logging_interval: int = 2000,
+        saving_interval: int = 1000,
         ds_processed_path: Path | None = None,
         mark_uncompleted_as_processed: bool = False,
     ) -> None:
@@ -317,7 +317,7 @@ class DatasetCompletionSync:
         org_units: List of organisation unit IDs to sync.
         parent_ou: List of parent organisation unit IDs to build completion table (if None, no table built).
         period: The period for which to sync the completion status.
-        logging_interval: Interval for logging progress (defaults to 2000).
+        saving_interval: Interval for saving progress (defaults to 2000).
         ds_processed_path: Path to save processed org units (if None, no file saving nor comparison).
         mark_uncompleted_as_processed: If True, org units with no completion status will be marked as processed.
         """
@@ -380,7 +380,7 @@ class DatasetCompletionSync:
                     # on error: The msg is logged and the ou is skipped
                     pass
 
-                if idx % logging_interval == 0 or idx == len(org_units_to_process):
+                if idx % saving_interval == 0 or idx == len(org_units_to_process):
                     self._log_message(f"{idx} / {len(org_units_to_process)} OUs processed")
                     self._update_processed_ds_sync_file(
                         period=period,
@@ -487,7 +487,7 @@ class DatasetCompletionSync:
         json_data = self._try_parse_json(response)
         status = (json_data.get("status") or "").upper() if json_data else None
         if status in ("SUCCESS", "OK"):
-            self._log_message(f"Successful POST response for ds: {ds} pe:{pe} ou: {ou}")
+            self._log_message(f"Successful POST response for ds: {ds} pe:{pe} ou: {ou}", log_current_run=False)
             self._update_import_summary(response=json_data)
             return
 
