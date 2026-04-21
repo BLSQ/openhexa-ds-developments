@@ -39,7 +39,9 @@ def log_message(
     elif level == "warning":
         logger.warning(message)
     elif level == "error":
-        logger.error(f"{message} Details: {error_details}")
+        logger.error(f"{message}")
+    elif level == "debug":
+        logger.debug(message)
     else:
         raise exception_class(f"Invalid logging level: {level}")
 
@@ -51,6 +53,8 @@ def log_message(
             current_run.log_warning(message)
         elif level == "error":
             current_run.log_error(message)
+        elif level == "debug":
+            current_run.log_debug(message)
 
 
 def save_to_parquet(data: pl.DataFrame | pd.DataFrame, filename: Path) -> None:

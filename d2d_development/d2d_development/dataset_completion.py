@@ -158,10 +158,7 @@ class DatasetCompletionSync:
                 ds=dataset_id,
                 pe=period,
                 ou=org_unit,
-                error_msg=(
-                    f"GET request to {self.source_dhis2.api.url} (param: children={children}): "
-                    f"Invalid or empty JSON response"
-                ),
+                error_msg=(f"GET request (param: children={children}): Invalid or empty JSON response"),
             )
             return []
 
@@ -378,7 +375,7 @@ class DatasetCompletionSync:
                     # on error: The msg is logged and the ou is skipped
                     pass
 
-                if idx % saving_interval == 0 or idx == len(org_units_to_process):
+                if idx % saving_interval == 0:
                     self._log_message(f"{idx} / {len(org_units_to_process)} OUs processed")
                     self._update_processed_ds_sync_file(
                         period=period,
@@ -386,9 +383,14 @@ class DatasetCompletionSync:
                     )
         except Exception as e:
             error_msg = f"Dataset completion sync failed for dataset {target_dataset_id}, period {period}. Error: {e}"
-            self._log_message(error_msg, level="error")
+            self._log_message(error_msg, level="error", log_current_run=False)
             raise DHIS2DatasetCompletionError(error_msg) from e
         finally:
+            # repetitive save, but safer
+            self._update_processed_ds_sync_file(
+                period=period,
+                processed_path=ds_processed_path,
+            )
             self._log_summary(org_units=org_units_to_process, period=period)
 
     def _get_unprocessed_org_units(self, org_units: list, processed_path: Path | None, period: str) -> list:
@@ -429,8 +431,9 @@ class DatasetCompletionSync:
     ) -> None:
         """Save the processed org units to a parquet file."""
         if processed_path is None:
-            self._log_message("No processed path provided, processed org units saving skipped.", level="warning")
+            self._log_message("No processed path provided, skipping save.", level="warning")
             return
+
         try:
             processed_path.mkdir(parents=True, exist_ok=True)
         except Exception as e:
@@ -438,40 +441,43 @@ class DatasetCompletionSync:
             return
 
         ds_processed_file = processed_path / f"ds_ou_processed_{period}.parquet"
-        msg = None
-        final_processed = self.processed
 
+        self._log_message(f"Period {period}: Current interval processed {len(self.processed)} OUs.", level="debug")
+
+        existing_org_units = set()
         if ds_processed_file.exists():
             try:
                 existing_df = pd.read_parquet(ds_processed_file)
                 if "ORG_UNIT" in existing_df.columns:
                     existing_org_units = set(existing_df["ORG_UNIT"].unique())
                 else:
-                    existing_org_units = set()
                     self._log_message(
-                        f"Processed file {ds_processed_file} missing ORG_UNIT col, treating as empty.", level="warning"
+                        f"File {ds_processed_file} missing ORG_UNIT column, treating as empty.", level="warning"
                     )
-                new_org_units = [ou for ou in self.processed if ou not in existing_org_units]
-                final_processed = list(existing_org_units) + new_org_units
-                msg = (
-                    f"Found {len(existing_org_units)} processed OUs, "
-                    f"updating file {ds_processed_file.name} with {len(new_org_units)} new OUs."
-                )
             except Exception as e:
-                self._log_message(f"Error reading existing processed file {ds_processed_file}: {e}", level="error")
-                final_processed = self.processed
+                self._log_message(f"Error reading {ds_processed_file}: {e}", level="error")
 
-        if final_processed:
-            try:
-                df_processed = pd.DataFrame({"ORG_UNIT": final_processed})
-                df_processed.to_parquet(ds_processed_file, index=False)
-                msg = f"Saved {len(final_processed)} processed org units in {ds_processed_file.name}."
-            except Exception as e:
-                self._log_message(f"Error writing processed file {ds_processed_file}: {e}", level="error")
-                return
+        # Calculate new OUs
+        new_org_units = set(self.processed) - existing_org_units
 
-        if msg:
-            self._log_message(msg)
+        if not new_org_units:
+            self._log_message(f"No new OUs to save for period {period}.", level="debug")
+            self.processed = []
+            return
+
+        # Merge and save
+        final_processed = list(existing_org_units | new_org_units)
+
+        try:
+            df_processed = pd.DataFrame({"ORG_UNIT": final_processed})
+            df_processed.to_parquet(ds_processed_file, index=False)
+            self._log_message(
+                f"Saved {ds_processed_file.name}: "
+                f"{len(existing_org_units)} existing + {len(new_org_units)} new = {len(final_processed)} total OUs."
+            )
+            self.processed = []  # Reset after successful save
+        except Exception as e:
+            self._log_message(f"Error writing {ds_processed_file}: {e}", level="error")
 
     def _handle_push_response(self, ds: str, pe: str, ou: str, response: requests.Response) -> None:
         """Handle a successful DHIS2 completion status push response.

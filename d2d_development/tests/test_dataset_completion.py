@@ -383,3 +383,85 @@ def test_sync_completion_get_409_error():
             ),
         }
     ]
+
+
+def test_sync_completion_get_empty_error():
+    """Test the sync completion handles fetch error response gracefully."""
+    dhis2_source = MagicMock()
+    dhis2_target = MagicMock()
+    # Mock GET response
+    mock_get_response = MagicMock()
+    # error valid for v2.37 and v2.40
+    completion_source = {}
+    mock_get_response.json.return_value = completion_source
+    dhis2_source.api.session.get.return_value = mock_get_response
+
+    # Run the sync method
+    sync = DatasetCompletionSync(dhis2_source, dhis2_target)
+    sync.log_function = MagicMock()
+    sync._reset_summary()
+    sync.sync(source_dataset_id="DS1", target_dataset_id="DS2", org_units=["ou1"], period="202601")
+    assert sync.import_summary["import_counts"]["imported"] == 0
+    assert sync.import_summary["import_counts"]["updated"] == 0
+    assert sync.import_summary["import_counts"]["ignored"] == 0
+    assert sync.import_summary["import_counts"]["deleted"] == 0
+    assert sync.import_summary["errors"]["fetch_errors"] == [
+        {
+            "ds": "DS1",
+            "pe": "202601",
+            "ou": "ou1",
+            "error": ("GET request (param: children=False): Invalid or empty JSON response"),
+        }
+    ]
+    assert sync.processed == []
+
+
+@pytest.mark.parametrize(
+    "mock_response", [MOCK_DHIS2_COMPLETION_200_IMP_RESPONSE_V2_37, MOCK_DHIS2_COMPLETION_200_IMP_RESPONSE_V2_40]
+)
+def test_sync_completion_processed_ous(mock_response: dict):
+    """Test the correct count of processed org units is logged and saved during the sync process."""
+    dhis2_source = MagicMock()
+    dhis2_target = MagicMock()
+    # Mock GET response with multiple org units
+    mock_get_response = MagicMock()
+    mock_get_response.json.return_value = {
+        "completeDataSetRegistrations": [
+            {
+                "period": "202601",
+                "dataSet": "DS1",
+                "organisationUnit": f"ou{i}",
+                "attributeOptionCombo": "HllvX50cXC0",
+                "date": "2026-01-31",
+                "storedBy": "OpenHexa",
+                "completed": True,
+            }
+            for i in range(1, 11)
+        ]
+    }
+    dhis2_source.api.session.get.return_value = mock_get_response
+
+    # Mock POST response
+    mock_post_response = MagicMock()
+    mock_post_response.json.return_value = mock_response
+    dhis2_target.api.session.post.return_value = mock_post_response
+
+    # Run the sync method with a small saving interval to test intermediate saves
+    sync = DatasetCompletionSync(dhis2_source, dhis2_target)
+    sync.log_function = MagicMock()
+    sync._reset_summary()
+    sync.sync(
+        source_dataset_id="DS1",
+        target_dataset_id="DS2",
+        org_units=[f"ou{i}" for i in range(1, 11)],
+        period="202601",
+        saving_interval=5,
+    )
+
+    # Check that the log function was called with the correct progress messages
+    expected_calls = [f"{i} / 10 OUs processed" for i in range(5, 11, 5)]  # Logs at 5 and 10 processed OUs
+    actual_calls = [
+        call[1]["message"] for call in sync.log_function.call_args_list if call[1]["message"].endswith("OUs processed")
+    ]
+    assert actual_calls == expected_calls
+    assert sync.processed == [f"ou{i}" for i in range(1, 11)]
