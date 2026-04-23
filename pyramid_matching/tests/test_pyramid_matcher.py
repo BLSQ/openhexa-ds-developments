@@ -85,8 +85,8 @@ def test_custom_matcher_is_used():
 
 
 def test_default_logger_without_current_run(monkeypatch):
-    """Test that if current_run is not in globals, the default logger level is logging.INFO."""
-    monkeypatch.delitem(pyma.__dict__, "current_run", raising=False)
+    """Test that when current_run is None (e.g. Jupyter), a stdlib logger at INFO level is created."""
+    monkeypatch.setattr(pyma, "current_run", None)
 
     matcher = PyramidMatcher()
 
@@ -95,13 +95,9 @@ def test_default_logger_without_current_run(monkeypatch):
 
 
 def test_default_logger_with_current_run(monkeypatch):
-    """Test that if current_run is in globals, the default logger is None."""
-
-    class FakeRun:
-        def log_info(self, *args, **kwargs):
-            pass
-
-    monkeypatch.setitem(pyma.__dict__, "current_run", FakeRun())
+    """Test that when current_run is available (pipeline context), the logger is None."""
+    fake_run = MagicMock()
+    monkeypatch.setattr(pyma, "current_run", fake_run)
 
     matcher = PyramidMatcher()
 
@@ -110,7 +106,7 @@ def test_default_logger_with_current_run(monkeypatch):
 
 def test_default_logger_has_stream_handler(monkeypatch):
     """Test that the default logger has a StreamHandler attached."""
-    monkeypatch.delitem(pyma.__dict__, "current_run", raising=False)
+    monkeypatch.setattr(pyma, "current_run", None)
 
     matcher = PyramidMatcher()
     assert matcher.logger is not None

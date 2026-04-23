@@ -60,7 +60,7 @@ class PyramidMatcher:
             The logger instance to use. If None, a default logger will be created.
         """
         if logger is None:
-            if "current_run" in globals():
+            if current_run is not None:
                 self.logger = None  # we will use the logger from the current run
             else:
                 self.logger = logging.getLogger(self.__class__.__name__)
@@ -263,7 +263,7 @@ class PyramidMatcher:
             else:
                 raise ValueError(f"Unsupported log level: {level}")
         else:
-            getattr(self.logger, level)(message)  # log
+            getattr(self.logger, level)(message)
 
     def _get_levels_to_match(self, matching_col_suffix: str) -> list:
         """If no levels_to_match are provided, detect the levels to match dynamically.
