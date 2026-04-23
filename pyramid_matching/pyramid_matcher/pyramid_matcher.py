@@ -253,7 +253,7 @@ class PyramidMatcher:
 
     def _log(self, message: str, level: str = "info") -> None:
         """Log a message with the specified level."""
-        if self.logger is None and current_run is not None:
+        if self.logger is None:
             if level == "info":
                 current_run.log_info(message)
             elif level == "error":
