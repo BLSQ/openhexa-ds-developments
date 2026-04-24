@@ -372,8 +372,11 @@ class DatasetCompletionSync:
                     )
                     self.processed.append(ou)
                 except DHIS2DatasetCompletionError:
-                    # on error: The msg is logged and the ou is skipped
+                    # Expected errors are logged and handled
                     pass
+                except Exception as e:
+                    # Unexpected errors are raised
+                    raise DHIS2DatasetCompletionError(f"Unexpected error pushing completion status: {e!s}") from e
 
                 if idx % saving_interval == 0:
                     self._log_message(f"{idx} / {len(org_units_to_process)} OUs processed")
@@ -382,7 +385,9 @@ class DatasetCompletionSync:
                         processed_path=ds_processed_path,
                     )
         except Exception as e:
-            error_msg = f"Dataset completion sync failed for dataset {target_dataset_id}, period {period}. Error: {e}"
+            error_msg = (
+                f"Dataset completion sync failed for dataset {target_dataset_id}, pe: {period} ou: {ou}. Error: {e}"
+            )
             self._log_message(error_msg, level="error", log_current_run=False)
             raise DHIS2DatasetCompletionError(error_msg) from e
         finally:
