@@ -81,7 +81,7 @@ def test_push_serialize_data_point_to_delete():
     data_point = (
         DHIS2Extractor(dhis2_client=MockDHIS2Client())
         .data_elements._retrieve_data(data_elements=["AAA111"], org_units=[], period="202501")
-        .slice(3, 1)
+        .slice(4, 1)
     )
 
     pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
@@ -109,7 +109,7 @@ def test_push_classify_points():
     assert len(valid) + len(to_delete) + len(not_valid) == len(data_points), (
         "Row count mismatch! Check for overlaps or missing rows."
     )
-    assert len(valid) == 3, "Expected 3 valid data points."
+    assert len(valid) == 4, "Expected 4 valid data points."
     assert len(to_delete) == 1, "Expected 1 data point marked for deletion"
     assert len(not_valid) == 5, "Expected 4 invalid data points."
 
@@ -119,7 +119,7 @@ def test_push_log_invalid_data_points():
     data_points = (
         DHIS2Extractor(dhis2_client=MockDHIS2Client())
         .data_elements._retrieve_data(data_elements=[], org_units=[], period="202501")
-        .slice(4, 4)  # Select invalid data points (rows 4 to 7) for testing
+        .slice(5, 4)  # Select invalid data points (rows 4 to 7) for testing
     )
     pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
     _, _, not_valid = pusher._classify_data_points(data_points)
@@ -144,7 +144,7 @@ def test_push_log_delete_data_points():
     data_points = (
         DHIS2Extractor(dhis2_client=MockDHIS2Client())
         .data_elements._retrieve_data(data_elements=[], org_units=[], period="202501")
-        .slice(3, 1)  # Select invalid data points (rows 4 to 7) for testing
+        .slice(4, 1)  # Select invalid data points (rows 4 to 7) for testing
     )
     pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
     _, to_delete, _ = pusher._classify_data_points(data_points)
@@ -548,4 +548,4 @@ def test_push_summary_rejected_points():
 
 
 if __name__ == "__main__":
-    test_push_serialize_data_point_valid()
+    test_push_classify_points()
