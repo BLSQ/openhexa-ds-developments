@@ -13,7 +13,7 @@ def test_extract_map_data_elements():
         data_elements=[], org_units=[], period="202501"
     )
     assert isinstance(result, pl.DataFrame)
-    assert result.shape == (9, 9)
+    assert result.shape == (10, 9)
     assert result.columns == [
         "data_type",
         "dx",
@@ -30,6 +30,7 @@ def test_extract_map_data_elements():
         "AAA111",
         "BBB222",
         "CCC333",
+        "DDD444",
         "DELETE1",
         "INVALID1",
         "INVALID2",
@@ -63,7 +64,7 @@ def test_extract_map_data_elements():
     }
     assert set(result["rate_metric"]) == {None}
     assert set(result["domain_type"]) == {"AGGREGATED"}
-    assert set(result["value"].drop_nulls()) == {"12", "18", "25", "55.0"}
+    assert set(result["value"].drop_nulls()) == {"12", "18", "25", "55.0", "A COMMENT INSTEAD OF A NUMBER"}
 
 
 def test_extract_map_reporting_rates():
