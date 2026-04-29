@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import pandas as pd
 import polars as pl
 from openhexa.toolbox.dhis2 import DHIS2
 
@@ -103,7 +104,10 @@ class DataElementsExtractor:
             self.extractor._log_message(msg, log_current_run=False, error_details=str(e), level="error")
             raise ExtractorError(msg) from e
 
-        return self.extractor._map_to_dhis2_format(pl.DataFrame(response), data_type=DataType.DATA_ELEMENT)
+        # Transform to pandas first to handle automatic polars schema inference
+        return self.extractor._map_to_dhis2_format(
+            pl.from_pandas(pd.DataFrame(response).astype({"value": str})), data_type=DataType.DATA_ELEMENT
+        )
 
 
 class IndicatorsExtractor:
@@ -205,7 +209,10 @@ class IndicatorsExtractor:
             self.extractor._log_message(msg, log_current_run=False, error_details=str(e), level="error")
             raise ExtractorError(msg) from e
 
-        raw_data_formatted = pl.DataFrame(response).rename({"pe": "period", "ou": "orgUnit"})
+        # Transform to pandas first to handle automatic polars schema inference
+        raw_data_formatted = pl.from_pandas(pd.DataFrame(response).astype({"value": str})).rename(
+            {"pe": "period", "ou": "orgUnit"}
+        )
         if "co" in raw_data_formatted.columns:
             raw_data_formatted = raw_data_formatted.rename({"co": "categoryOptionCombo"})
         return self.extractor._map_to_dhis2_format(
@@ -306,7 +313,10 @@ class ReportingRatesExtractor:
             self.extractor._log_message(msg, log_current_run=False, error_details=str(e), level="error")
             raise ExtractorError(msg) from e
 
-        raw_data_formatted = pl.DataFrame(response).rename({"pe": "period", "ou": "orgUnit"})
+        # Transform to pandas first to handle automatic polars schema inference
+        raw_data_formatted = pl.from_pandas(pd.DataFrame(response).astype({"value": str})).rename(
+            {"pe": "period", "ou": "orgUnit"}
+        )
         return self.extractor._map_to_dhis2_format(raw_data_formatted, data_type=DataType.REPORTING_RATE)
 
 
