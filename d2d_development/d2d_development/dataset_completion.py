@@ -78,7 +78,9 @@ class DatasetCompletionSync:
         """Helper function to log an error message and append it to the import summary."""
         error_dict = {"ds": ds, "pe": pe, "ou": ou, "error": error_msg}
         self.import_summary["errors"][error_type].append(error_dict)
-        self._log_message(f"{error_msg} [{error_type}] {error_dict}", level=level, log_current_run=log_current_run)
+        self._log_message(
+            f"[{error_type}] {error_msg} ds={ds} pe={pe}, ou={ou}", level=level, log_current_run=log_current_run
+        )
 
     def _log_summary(self, org_units: list, period: str) -> None:
         """Log a summary of the dataset completion sync process."""
