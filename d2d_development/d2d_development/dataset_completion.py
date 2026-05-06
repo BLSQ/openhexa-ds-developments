@@ -409,7 +409,7 @@ class DatasetCompletionSync:
             self._log_message(
                 f"No processed file found for {period}, processing {len(org_units)} org units.",
             )
-            return org_units
+            return list(set(org_units))
 
         try:
             processed_df = pd.read_parquet(ds_processed_fname)
@@ -422,14 +422,14 @@ class DatasetCompletionSync:
             self._log_message(
                 f"Loaded {len(processed_set)} processed org units, {len(remaining)} to process for period {period}."
             )
-            return remaining
+            return list(set(remaining))
         except Exception as e:
             self._log_message(
                 f"Error loading processed file: {ds_processed_fname}. Returning all org units to process.",
                 level="error",
                 error_details=str(e),
             )
-            return org_units
+            return list(set(org_units))
 
     def _update_processed_ds_sync_file(
         self,
