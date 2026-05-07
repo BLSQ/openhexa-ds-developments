@@ -541,6 +541,46 @@ reorder_match_columns_two_levels_simple = pl.DataFrame(
 
 
 # ================================
+# run_matching: level_1 matches, level_2 does not
+# ================================
+
+# Reference has a single path: PROVINCE_A → DISTRICT_X
+# Candidate has a single path: PROVINCE_A → ZONE_OMEGA
+# FuzzyMatcher(threshold=80): "PROVINCE_A"↔"PROVINCE_A" scores 100 (match);
+# "DISTRICT_X"↔"ZONE_OMEGA" scores far below 80 (no match).
+
+run_matching_l1_match_l2_nomatch_reference = pl.DataFrame(
+    {
+        "level_1_name": ["PROVINCE_A"],
+        "level_2_name": ["DISTRICT_X"],
+    }
+)
+
+run_matching_l1_match_l2_nomatch_candidate = pl.DataFrame(
+    {
+        "level_1_name": ["PROVINCE_A"],
+        "level_2_name": ["ZONE_OMEGA"],
+    }
+)
+
+run_matching_l1_match_l2_nomatch_expected_ref_unmatched = pl.DataFrame(
+    {
+        "level_1_name": ["PROVINCE_A"],
+        "level_2_name": ["DISTRICT_X"],
+        "unmatched_level": ["level_2"],
+    }
+)
+
+run_matching_l1_match_l2_nomatch_expected_can_unmatched = pl.DataFrame(
+    {
+        "level_1_name": ["PROVINCE_A"],
+        "level_2_name": ["ZONE_OMEGA"],
+        "unmatched_level": ["level_2"],
+    }
+)
+
+
+# ================================
 # Matcher candidates
 # ================================
 

@@ -535,7 +535,11 @@ def _stub_run_matching(pm: PyramidMatcher, levels_return: list | None = None):
         patch.object(
             pm,
             "_match_level",
-            return_value=(pl.DataFrame(), pl.DataFrame(), pl.DataFrame()),
+            return_value=(
+                pl.DataFrame({"dummy": ["x"]}),
+                pl.DataFrame(),
+                pl.DataFrame(),
+            ),
         )
     )
     stack.enter_context(
@@ -726,7 +730,7 @@ def test_run_matching_calls_match_level_once_per_level_and_reorder_match_columns
     ):
         captured_target_levels.append(target_level)
         captured_levels_already_matched.append(list(levels_already_matched))
-        return pl.DataFrame(), pl.DataFrame(), pl.DataFrame()
+        return pl.DataFrame({"dummy": ["x"]}), pl.DataFrame(), pl.DataFrame()
 
     with stack:
         with (
@@ -818,6 +822,81 @@ def test_run_matching_returns_empty_unmatched_dfs_and_correct_tuple_order_when_a
     assert_frame_equal(result[1], expected_simplified)
     assert result[2].is_empty()
     assert result[3].is_empty()
+
+
+# --- Scenario: level_1 matches, level_2 does not ---
+# 9. When level_1 produces matches but level_2 produces no matches, the function returns early.
+#    Outputs: matched/simplified are empty; unmatched DataFrames carry the unmatched level_2
+#    entries with an "unmatched_level" column. Call counts: _match_level ×2, _match_level_group
+#    ×2, _select_group ×1 (only when already_matched is non-empty), _add_repeated_matches ×0
+#    and _reorder_match_columns ×0 (never reached due to early return).
+#    → test_run_matching_level1_match_level2_no_match_outputs
+#    → test_run_matching_level1_match_level2_no_match_call_counts
+
+
+def test_run_matching_level1_match_level2_no_match_outputs(
+    pyramid_matcher: PyramidMatcher,
+):
+    """When level_1 matches but level_2 does not, matched/simplified are empty and the
+    unmatched DataFrames carry the unmatched level_2 entries tagged with unmatched_level."""
+    matched, simplified, ref_unmatched, can_unmatched = pyramid_matcher.run_matching(
+        test_config.run_matching_l1_match_l2_nomatch_reference,
+        test_config.run_matching_l1_match_l2_nomatch_candidate,
+    )
+
+    assert matched.is_empty()
+    assert simplified.is_empty()
+    assert_frame_equal(
+        ref_unmatched,
+        test_config.run_matching_l1_match_l2_nomatch_expected_ref_unmatched,
+        check_row_order=False,
+    )
+    assert_frame_equal(
+        can_unmatched,
+        test_config.run_matching_l1_match_l2_nomatch_expected_can_unmatched,
+        check_row_order=False,
+    )
+
+
+def test_run_matching_level1_match_level2_no_match_call_counts(
+    pyramid_matcher: PyramidMatcher,
+):
+    """When level_1 matches but level_2 does not, internal methods are called the expected
+    number of times: _match_level ×2, _match_level_group ×2, _select_group ×1,
+    _add_repeated_matches ×0 and _reorder_match_columns ×0 (early return skips both)."""
+    with (
+        patch.object(
+            pyramid_matcher, "_match_level", wraps=pyramid_matcher._match_level
+        ) as mock_match_level,
+        patch.object(
+            pyramid_matcher,
+            "_match_level_group",
+            wraps=pyramid_matcher._match_level_group,
+        ) as mock_match_level_group,
+        patch.object(
+            pyramid_matcher, "_select_group", wraps=pyramid_matcher._select_group
+        ) as mock_select_group,
+        patch.object(
+            pyramid_matcher,
+            "_add_repeated_matches",
+            wraps=pyramid_matcher._add_repeated_matches,
+        ) as mock_add_repeated,
+        patch.object(
+            pyramid_matcher,
+            "_reorder_match_columns",
+            wraps=pyramid_matcher._reorder_match_columns,
+        ) as mock_reorder,
+    ):
+        pyramid_matcher.run_matching(
+            test_config.run_matching_l1_match_l2_nomatch_reference,
+            test_config.run_matching_l1_match_l2_nomatch_candidate,
+        )
+
+    assert mock_match_level.call_count == 2
+    assert mock_match_level_group.call_count == 2
+    assert mock_select_group.call_count == 1
+    assert mock_add_repeated.call_count == 0
+    assert mock_reorder.call_count == 0
 
 
 # ================================

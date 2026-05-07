@@ -222,6 +222,21 @@ class PyramidMatcher:
                 )
                 list_candidate_not_matched.append(candidate_no_match_level)
 
+            if data_matched.is_empty():
+                self._log(
+                    f"No matches found at {level}. Stopping hierarchical matching."
+                )
+                return (
+                    pl.DataFrame(),
+                    pl.DataFrame(),
+                    pl.concat(list_reference_not_matched)
+                    if list_reference_not_matched
+                    else pl.DataFrame(),
+                    pl.concat(list_candidate_not_matched)
+                    if list_candidate_not_matched
+                    else pl.DataFrame(),
+                )
+
         repeated_levels_check = []
         for level in levels_to_match:
             data_matched = self._add_repeated_matches(
