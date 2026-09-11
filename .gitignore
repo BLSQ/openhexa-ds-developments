@@ -1,6 +1,7 @@
 workspace.yaml
 .vscode/
 AGENTS.md
+d2d_development/data/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

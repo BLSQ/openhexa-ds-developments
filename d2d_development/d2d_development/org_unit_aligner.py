@@ -56,7 +56,7 @@ def _records_to_polars(records: list[dict]) -> pl.DataFrame:
         {k: (None if _is_nan(v) else (str(v) if k in _STRINGIFIED_COLUMNS else v)) for k, v in record.items()}
         for record in records
     ]
-    return pl.DataFrame(records)
+    return pl.DataFrame(records, infer_schema_length=None)
 
 
 class DHIS2PyramidAligner:

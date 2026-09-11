@@ -212,6 +212,28 @@ def test_records_to_polars_preserves_column_absent_from_first_record():
     assert ast.literal_eval(geometry_by_id["GEO_POINT"]) == point
 
 
+def test_records_to_polars_infers_type_from_value_past_default_scan_window():
+    """Test that a typed value past polars' default schema-scan window doesn't crash the build.
+
+    Polars' default `infer_schema_length` for a list of dicts is 100: it only looks at the first
+    100 rows to decide each column's type. `closedDate` is null for the vast majority of real org
+    units and only set for a handful of closed ones, so it's easy for every one of the first 100
+    source records to have `closedDate: None` -- polars then infers the column as the `Null` type,
+    and appending the first real date string past row 100 blows up with "could not append value
+    ... to the builder". `_records_to_polars` must pass `infer_schema_length=None` to force a full
+    scan and avoid this.
+    """
+    records = [{"id": f"OU{i:04d}", "closedDate": None} for i in range(149)]
+    records.append({"id": "OU0149", "closedDate": "2018-08-25T00:00:00.000"})
+
+    df = org_unit_aligner._records_to_polars(records)
+
+    assert df.schema["closedDate"] == pl.String
+    closed_date_by_id = dict(zip(df["id"], df["closedDate"], strict=True))
+    assert closed_date_by_id["OU0149"] == "2018-08-25T00:00:00.000"
+    assert closed_date_by_id["OU0000"] is None
+
+
 def test_align_to_handles_target_pyramid_record_missing_geometry_key():
     """Test that align_to() runs end to end when a target pyramid record lacks a geometry key.
 
