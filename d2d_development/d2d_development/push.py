@@ -149,7 +149,6 @@ class DHIS2Pusher:
         periods = sorted(data_points_valid["period"].unique().to_list())
         self._log_message(f"Period(s): {', '.join(periods)}.")
         self._push_data_points(data_point_list=self._serialize_data_points(data_points_valid))
-        self._log_message(f"Data points push summary:  {self.summary['import_counts']}")
 
     def _push_to_delete(self, data_points_to_delete: pl.DataFrame) -> None:
         """Push data points with NA values to DHIS2 to delete them."""
@@ -161,7 +160,6 @@ class DHIS2Pusher:
         self._push_data_points(
             data_point_list=self._serialize_data_points(data_points_to_delete), summary_key="import_counts_delete"
         )
-        self._log_message(f"Data points delete summary: {self.summary['import_counts_delete']}")
 
     def _initialize_cache(self, cache_path: Path | None) -> None:
         """Initialize the cache for tracking pushed data points."""
@@ -345,10 +343,8 @@ class DHIS2Pusher:
                 last_logged_at = processed_points
 
         # Final summary
-        self._log_message(
-            f"{processed_points} / {total_data_points} data points processed."
-            f" Final summary: {self.summary[summary_key]}"
-        )
+        self._log_message(f"{processed_points} / {total_data_points} data points processed.")
+        self._log_message(f"Final summary: {self.summary[summary_key]}")
 
     def _raise_server_errors(self, r: requests.Response) -> None:
         """Check if the response indicates a server error (stop process)."""
