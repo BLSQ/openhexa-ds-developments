@@ -195,6 +195,46 @@ def test_push_data_point():
         }
 
 
+def test_push_data_import_counts_separated_from_delete_counts():
+    """Test that valid-push and delete-push counts are tracked in separate summary buckets."""
+    data_points = DHIS2Extractor(dhis2_client=MockDHIS2Client()).data_elements._retrieve_data(
+        data_elements=["AAA111", "DELETE1"], org_units=[], period="202501"
+    )
+
+    pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())
+
+    mock_delete_response = {
+        "httpStatus": "OK",
+        "httpStatusCode": 200,
+        "status": "OK",
+        "message": "Import was successful.",
+        "response": {
+            "responseType": "ImportSummary",
+            "status": "SUCCESS",
+            "importCount": {"imported": 0, "updated": 0, "ignored": 0, "deleted": 1},
+            "conflicts": [],
+            "rejectedIndexes": [],
+        },
+    }
+
+    # First POST call is the valid-points push, second is the delete push
+    with patch.object(
+        pusher.dhis2_client.api.session,
+        "post",
+        side_effect=[
+            MockDHIS2Response(MOCK_DHIS2_OK_RESPONSE),
+            MockDHIS2Response(mock_delete_response),
+        ],
+    ):
+        pusher.push_data(data_points)
+
+    assert pusher.summary["import_counts"]["imported"] == 1
+    assert pusher.summary["import_counts"]["deleted"] == 0
+
+    assert pusher.summary["import_counts_delete"]["imported"] == 0
+    assert pusher.summary["import_counts_delete"]["deleted"] == 1
+
+
 def test_push_data_points_connection_error():
     """Test the error handling of error 503 to DHIS2."""
     pusher = DHIS2Pusher(dhis2_client=MockDHIS2Client())

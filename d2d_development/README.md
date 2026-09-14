@@ -188,7 +188,8 @@ pusher.push_data(df)
 
 After calling `push_data`, the `DHIS2Pusher` instance provides detailed results of the push operation in its `summary` attribute. This dictionary contains:
 
-- `import_counts`: Number of data points imported, updated, ignored, or deleted (dict with keys: `imported`, `updated`, `ignored`, `deleted`).
+- `import_counts`: Number of data points imported, updated, ignored, or deleted from the valid-data push (dict with keys: `imported`, `updated`, `ignored`, `deleted`).
+- `import_counts_delete`: Same shape as `import_counts`, but for the separate push that sets NA-valued data points to be deleted.
 - `import_options`: The options used for the import (strategy, dry run, etc).
 - `import_errors`: List of errors, conflicts, or error reports returned by DHIS2 or encountered during the push.
 - `rejected_datapoints`: List of data points that were rejected by DHIS2 itself (e.g. a conflict on a specific value), identified from the API response.
@@ -202,6 +203,7 @@ print(pusher.summary)
 # Example output:
 # {
 #   'import_counts': {'imported': 1, 'updated': 0, 'ignored': 0, 'deleted': 0},
+#   'import_counts_delete': {'imported': 0, 'updated': 0, 'ignored': 0, 'deleted': 1},
 #   'import_options': {'importStrategy': 'CREATE_AND_UPDATE', 'dryRun': False, ...},
 #   'import_errors': [],
 #   'rejected_datapoints': [],
