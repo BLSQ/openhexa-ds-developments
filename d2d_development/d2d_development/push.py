@@ -149,7 +149,6 @@ class DHIS2Pusher:
         periods = sorted(data_points_valid["period"].unique().to_list())
         self._log_message(f"Period(s): {', '.join(periods)}.")
         self._push_data_points(data_point_list=self._serialize_data_points(data_points_valid))
-        self._log_message(f"Data points push summary:  {self.summary['import_counts']}")
 
     def _push_to_delete(self, data_points_to_delete: pl.DataFrame) -> None:
         """Push data points with NA values to DHIS2 to delete them."""
@@ -158,8 +157,9 @@ class DHIS2Pusher:
 
         self._log_message(f"Pushing {len(data_points_to_delete)} data points with NA values.")
         self._log_ignored_or_na(data_points_to_delete, is_na=True)
-        self._push_data_points(data_point_list=self._serialize_data_points(data_points_to_delete))
-        self._log_message(f"Data points delete summary: {self.summary['import_counts']}")
+        self._push_data_points(
+            data_point_list=self._serialize_data_points(data_points_to_delete), summary_key="import_counts_delete"
+        )
 
     def _initialize_cache(self, cache_path: Path | None) -> None:
         """Initialize the cache for tracking pushed data points."""
@@ -291,6 +291,7 @@ class DHIS2Pusher:
     def _push_data_points(
         self,
         data_point_list: list[dict],
+        summary_key: str = "import_counts",
     ) -> None:
         """Push data points to DHIS2 in chunks, handling responses and logging progress.
 
@@ -298,6 +299,8 @@ class DHIS2Pusher:
         ----------
         data_point_list: list[dict]
             A list of dictionaries, each representing a data point formatted for DHIS2.
+        summary_key: str
+            Key of `self.summary` to accumulate the import counts into. Defaults to "import_counts".
         """
         total_data_points = len(data_point_list)
         processed_points = 0
@@ -312,13 +315,13 @@ class DHIS2Pusher:
                 response = self._safe_json(r)
 
                 if response:
-                    self._update_import_counts(response)
+                    self._update_import_counts(response, summary_key=summary_key)
 
             except requests.exceptions.RequestException as e:
                 self._raise_server_errors(r)  # Stop the process if there's a server error
                 response = self._safe_json(r)
                 if response:
-                    self._update_import_counts(response)
+                    self._update_import_counts(response, summary_key=summary_key)
                 else:
                     # No response JSON, at least log the request error msg
                     self.summary["import_errors"].extend(
@@ -335,15 +338,13 @@ class DHIS2Pusher:
                 progress_pct = (processed_points / total_data_points) * 100
                 self._log_message(
                     f"{processed_points} / {total_data_points} data points ({progress_pct:.1f}%) "
-                    f" summary: {self.summary['import_counts']}"
+                    f" summary: {self.summary[summary_key]}"
                 )
                 last_logged_at = processed_points
 
         # Final summary
-        self._log_message(
-            f"{processed_points} / {total_data_points} data points processed."
-            f" Final summary: {self.summary['import_counts']}"
-        )
+        self._log_message(f"{processed_points} / {total_data_points} data points processed.")
+        self._log_message(f"Push summary: {self.summary[summary_key]}")
 
     def _raise_server_errors(self, r: requests.Response) -> None:
         """Check if the response indicates a server error (stop process)."""
@@ -365,6 +366,7 @@ class DHIS2Pusher:
         """Reset the summary dictionary to its initial state before starting a new push operation."""
         self.summary = {
             "import_counts": {"imported": 0, "updated": 0, "ignored": 0, "deleted": 0},
+            "import_counts_delete": {"imported": 0, "updated": 0, "ignored": 0, "deleted": 0},
             "import_options": {},
             "import_errors": [],
             "rejected_datapoints": [],
@@ -395,7 +397,7 @@ class DHIS2Pusher:
         except (ValueError, json.JSONDecodeError):
             return None
 
-    def _update_import_counts(self, response: dict) -> None:
+    def _update_import_counts(self, response: dict, summary_key: str = "import_counts") -> None:
         """Update the import counts in the summary dictionary based on the response from DHIS2."""
         if not response:
             return
@@ -406,7 +408,7 @@ class DHIS2Pusher:
         else:
             import_counts = {}
         for key in ["imported", "updated", "ignored", "deleted"]:
-            self.summary["import_counts"][key] += import_counts.get(key, 0)
+            self.summary[summary_key][key] += import_counts.get(key, 0)
 
     def _extract_conflicts(self, response: dict, chunk: list) -> None:
         """Extract all conflicts and errorReports from a DHIS2 API response.
