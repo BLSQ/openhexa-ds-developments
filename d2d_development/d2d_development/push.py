@@ -344,7 +344,7 @@ class DHIS2Pusher:
 
         # Final summary
         self._log_message(f"{processed_points} / {total_data_points} data points processed.")
-        self._log_message(f"Final summary: {self.summary[summary_key]}")
+        self._log_message(f"Push summary: {self.summary[summary_key]}")
 
     def _raise_server_errors(self, r: requests.Response) -> None:
         """Check if the response indicates a server error (stop process)."""
